@@ -17,6 +17,7 @@ import { usePrayerStore } from '../../store/usePrayerStore';
 import { useScheduleStore } from '../../store/useScheduleStore';
 import { locationService } from '../../services/location/locationService';
 import { alarmPermissions } from '../../services/alarms/alarmPermissions';
+import { alarmManager } from '../../services/alarms/alarmManager';
 import { backupService } from '../../services/backup/backupService';
 import { resetDatabase } from '../../database';
 import { phaseEngine } from '../../services/scheduling/phaseEngine';
@@ -33,6 +34,23 @@ export default function SettingsScreen() {
   const [detectingGps, setDetectingGps] = useState(false);
   const [cityPickerVisible, setCityPickerVisible] = useState(false);
   const [methodPickerVisible, setMethodPickerVisible] = useState(false);
+  const [testingAlarm, setTestingAlarm] = useState(false);
+
+  const handleQuickTestAlarm = async () => {
+    setTestingAlarm(true);
+    try {
+      await alarmPermissions.requestNotificationPermissions();
+      await alarmManager.testTriggerAlarm('SalahFlow Prayer Alarm Test', 5);
+      Alert.alert(
+        'Test Alarm Scheduled',
+        'An audible alarm with vibration will ring in 5 seconds! Keep your device on or lock it to test lockscreen delivery.'
+      );
+    } catch (e: any) {
+      Alert.alert('Alarm Error', e?.message || 'Could not schedule test alarm.');
+    } finally {
+      setTestingAlarm(false);
+    }
+  };
 
   const handleDetectGps = async () => {
     setDetectingGps(true);
@@ -234,8 +252,33 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Alarms & Notification System</Text>
           <Text style={styles.itemSub}>
-            Inspect exact alarm delivery, boot receiver, and diagnostic tests.
+            Audible alarms and 10-minute advance reminders for all 5 daily prayers and tasks.
           </Text>
+
+          <View style={styles.alarmStatusBanner}>
+            <MaterialCommunityIcons name="bell-ring" size={20} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.alarmStatusTitle}>Core Prayer Alarms Active</Text>
+              <Text style={styles.alarmStatusDesc}>
+                Fajr, Dhuhr, Asr, Maghrib, Isha & Tahajjud have active alarms with sound and vibration enabled.
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.testAlarmBtn}
+            onPress={handleQuickTestAlarm}
+            disabled={testingAlarm}
+          >
+            <MaterialCommunityIcons
+              name={testingAlarm ? 'timer-sand' : 'volume-high'}
+              size={18}
+              color={colors.primary}
+            />
+            <Text style={styles.testAlarmBtnText}>
+              {testingAlarm ? 'Scheduling Test...' : 'Test Audible Alarm (5s)'}
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.diagnosticBtn}
@@ -243,9 +286,9 @@ export default function SettingsScreen() {
           >
             <MaterialCommunityIcons name="alarm-check" size={20} color={colors.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.diagnosticTitle}>Alarm Diagnostics & Live Test</Text>
+              <Text style={styles.diagnosticTitle}>Full Diagnostics & Permissions</Text>
               <Text style={styles.diagnosticSub}>
-                Test exact triggers, wake-lock & permissions
+                Inspect exact alarms, battery optimization & wake-lock
               </Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textSecondary} />
@@ -432,6 +475,45 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
     marginTop: 1,
+  },
+  alarmStatusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  alarmStatusTitle: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary,
+  },
+  alarmStatusDesc: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  testAlarmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  testAlarmBtnText: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
+    fontSize: typography.fontSize.sm,
   },
   diagnosticBtn: {
     flexDirection: 'row',

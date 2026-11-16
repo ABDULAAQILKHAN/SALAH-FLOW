@@ -9,6 +9,7 @@ import {
   getNextPrayer,
   NextPrayerInfo,
 } from '../services/prayer/prayerCalculator';
+import { formatDateKey } from '../utils/dateTime';
 import { parseISO } from 'date-fns';
 
 interface PrayerState {
@@ -73,12 +74,15 @@ export const usePrayerStore = create<PrayerState>((set, get) => ({
   refreshTimings: async (date: Date = new Date()): Promise<CalculatedTimes> => {
     const { location, prayerConfig } = get();
     const timings = await prayerScheduler.getOrCalculateDay(date, location, prayerConfig);
-    const nextPrayer = getNextPrayer(timings, new Date());
+    const isToday = formatDateKey(date) === formatDateKey(new Date());
 
-    set({
-      todayTimings: timings,
-      nextPrayer,
-    });
+    if (isToday) {
+      const nextPrayer = getNextPrayer(timings, new Date());
+      set({
+        todayTimings: timings,
+        nextPrayer,
+      });
+    }
 
     return timings;
   },

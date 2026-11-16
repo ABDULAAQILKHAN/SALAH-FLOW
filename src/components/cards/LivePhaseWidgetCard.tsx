@@ -5,6 +5,7 @@ import { colors, typography, spacing, borderRadius } from '../../theme';
 import { DailySchedule } from '../../types';
 import { widgetService, WidgetPhaseData } from '../../services/widget/widgetService';
 import { ProgressBar } from '../common/ProgressBar';
+import { formatDateKey } from '../../utils/dateTime';
 import { router } from 'expo-router';
 
 interface LivePhaseWidgetCardProps {
@@ -21,8 +22,17 @@ export const LivePhaseWidgetCard: React.FC<LivePhaseWidgetCardProps> = ({
   useEffect(() => {
     if (!schedule) return;
 
+    // Only run live countdown and sync if the schedule is for TODAY
+    const todayKey = formatDateKey(new Date());
+    if (schedule.date !== todayKey) {
+      setPhaseData(null);
+      return;
+    }
+
     const update = () => {
       const now = new Date();
+      if (schedule.date !== formatDateKey(now)) return;
+
       const current = widgetService.computeCurrentPhaseData(schedule, now);
 
       // If phase transitioned, trigger callback

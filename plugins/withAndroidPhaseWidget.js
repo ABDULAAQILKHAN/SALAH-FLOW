@@ -16,25 +16,19 @@ const WIDGET_LAYOUT_XML = `<?xml version="1.0" encoding="utf-8"?>
     android:background="@drawable/widget_bg"
     android:padding="12dp">
 
-    <!-- Top Row: Status dot + ACTIVE PHASE + Time Window -->
+    <!-- Top Row: Status text + Time Window -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <ImageView
-            android:layout_width="8dp"
-            android:layout_height="8dp"
-            android:src="@drawable/widget_dot"
-            android:layout_marginEnd="6dp" />
-
         <TextView
             android:id="@+id/widget_status_label"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="CURRENT PHASE"
+            android:text="● CURRENT PHASE"
             android:textColor="#10B981"
             android:textSize="10sp"
             android:textStyle="bold" />
@@ -67,8 +61,10 @@ const WIDGET_LAYOUT_XML = `<?xml version="1.0" encoding="utf-8"?>
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="3dp"
-        android:paddingHorizontal="6dp"
-        android:paddingVertical="2dp"
+        android:paddingLeft="8dp"
+        android:paddingRight="8dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
         android:background="@drawable/widget_core_badge"
         android:text="★ Core Salah"
         android:textColor="#10B981"
@@ -113,12 +109,12 @@ const WIDGET_LAYOUT_XML = `<?xml version="1.0" encoding="utf-8"?>
     <!-- Progress Bar -->
     <ProgressBar
         android:id="@+id/widget_progress_bar"
-        style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="5dp"
+        android:indeterminateOnly="false"
+        android:progressDrawable="@drawable/widget_progress"
         android:progress="0"
-        android:max="100"
-        android:progressDrawable="@drawable/widget_progress" />
+        android:max="100" />
 
     <!-- Task Progress Summary -->
     <TextView
@@ -136,17 +132,18 @@ const WIDGET_LAYOUT_XML = `<?xml version="1.0" encoding="utf-8"?>
 // AppWidgetProviderInfo XML: widget_salah_phase_info.xml
 const WIDGET_INFO_XML = `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minWidth="180dp"
+    android:minHeight="80dp"
     android:targetCellWidth="4"
     android:targetCellHeight="2"
     android:maxResizeWidth="450dp"
     android:maxResizeHeight="250dp"
     android:resizeMode="horizontal|vertical"
-    android:minResizeWidth="180dp"
-    android:minResizeHeight="70dp"
+    android:minResizeWidth="140dp"
+    android:minResizeHeight="60dp"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_salah_phase"
+    android:previewLayout="@layout/widget_salah_phase"
     android:description="@string/widget_description"
     android:widgetCategory="home_screen">
 </appwidget-provider>
@@ -242,37 +239,40 @@ class SalahFlowPhaseWidgetProvider : AppWidgetProvider() {
         }
 
         private fun renderWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-            val views = RemoteViews(context.packageName, R.layout.widget_salah_phase)
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val phasesJsonStr = prefs.getString(KEY_PHASES, null)
-
-            // Intent to launch app when clicking widget
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                ?: Intent(Intent.ACTION_MAIN).apply {
-                    setPackage(context.packageName)
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                launchIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_root_layout, pendingIntent)
-
-            if (phasesJsonStr.isNullOrEmpty()) {
-                views.setTextViewText(R.id.widget_phase_name, "SalahFlow")
-                views.setTextViewText(R.id.widget_core_task, "★ Prayer Routine")
-                views.setTextViewText(R.id.widget_phase_window, "Offline")
-                views.setTextViewText(R.id.widget_countdown, "Tap to open SalahFlow")
-                views.setTextViewText(R.id.widget_next_phase, "")
-                views.setProgressBar(R.id.widget_progress_bar, 100, 0, false)
-                views.setTextViewText(R.id.widget_task_progress, "Set up prayer phases in app")
-                appWidgetManager.updateAppWidget(appWidgetId, views)
-                return
-            }
-
             try {
+                val views = RemoteViews(context.packageName, R.layout.widget_salah_phase)
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val phasesJsonStr = prefs.getString(KEY_PHASES, null)
+
+                // Intent to launch app when clicking widget
+                val launchIntent = (context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    ?: Intent(Intent.ACTION_MAIN).apply {
+                        setPackage(context.packageName)
+                        addCategory(Intent.CATEGORY_LAUNCHER)
+                    }).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    }
+
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    0,
+                    launchIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                views.setOnClickPendingIntent(R.id.widget_root_layout, pendingIntent)
+
+                if (phasesJsonStr.isNullOrEmpty()) {
+                    views.setTextViewText(R.id.widget_phase_name, "SalahFlow")
+                    views.setTextViewText(R.id.widget_core_task, "★ Prayer Routine")
+                    views.setTextViewText(R.id.widget_phase_window, "Offline")
+                    views.setTextViewText(R.id.widget_countdown, "Tap to open SalahFlow")
+                    views.setTextViewText(R.id.widget_next_phase, "")
+                    views.setProgressBar(R.id.widget_progress_bar, 100, 0, false)
+                    views.setTextViewText(R.id.widget_task_progress, "Set up prayer phases in app")
+                    appWidgetManager.updateAppWidget(appWidgetId, views)
+                    return
+                }
+
                 val jsonArray = JSONArray(phasesJsonStr)
                 if (jsonArray.length() == 0) {
                     appWidgetManager.updateAppWidget(appWidgetId, views)
@@ -359,9 +359,14 @@ class SalahFlowPhaseWidgetProvider : AppWidgetProvider() {
                 if (nextPhaseEndTimeMs > now) {
                     scheduleNextPhaseAlarm(context, nextPhaseEndTimeMs)
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 e.printStackTrace()
-                appWidgetManager.updateAppWidget(appWidgetId, views)
+                try {
+                    val fallbackViews = RemoteViews(context.packageName, R.layout.widget_salah_phase)
+                    fallbackViews.setTextViewText(R.id.widget_phase_name, "SalahFlow")
+                    fallbackViews.setTextViewText(R.id.widget_countdown, "Tap to open routine")
+                    appWidgetManager.updateAppWidget(appWidgetId, fallbackViews)
+                } catch (ignored: Throwable) {}
             }
         }
 

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Image } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
 import { usePrayerStore } from '../store/usePrayerStore';
 import { colors, typography } from '../theme';
@@ -23,8 +23,17 @@ export default function RootLayout() {
   if (!isInitialized) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Initializing SalahFlow...</Text>
+        <View style={styles.splashIconWrapper}>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.splashLogo}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.splashTitle}>SalahFlow</Text>
+        <Text style={styles.splashSubtitle}>Prayer-Aware Timetable & Routine</Text>
+        <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 28 }} />
+        <Text style={styles.loadingText}>Initializing routine...</Text>
       </View>
     );
   }
@@ -78,10 +87,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  loadingText: {
-    marginTop: 16,
+  splashIconWrapper: {
+    width: 104,
+    height: 104,
+    borderRadius: 24,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 10,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  splashLogo: {
+    width: 100,
+    height: 100,
+    borderRadius: 22,
+  },
+  splashTitle: {
+    fontSize: 28,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    letterSpacing: 0.5,
+  },
+  splashSubtitle: {
+    fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    fontSize: typography.fontSize.md,
+    marginTop: 6,
+    letterSpacing: 0.2,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
   },
   errorTitle: {
     color: colors.danger,

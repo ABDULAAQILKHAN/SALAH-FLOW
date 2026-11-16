@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { getDatabase } from '../database';
 import { phaseEngine } from '../services/scheduling/phaseEngine';
 import { settingsRepository } from '../database/repositories/settingsRepository';
+import { taskRepository } from '../database/repositories/taskRepository';
+import { taskAlarmRepository } from '../database/repositories/taskAlarmRepository';
+import { generateUUID } from '../utils/uuid';
 import { notificationService } from '../services/notifications/notificationService';
 import { formatDateKey } from '../utils/dateTime';
 
@@ -42,6 +45,31 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // 4. Initialize default phases and core Salah if first launch
       await phaseEngine.initializeDefaultPhasesIfNeeded();
+
+      // 5. Ensure core prayer tasks have active alarms
+      try {
+        const allTasks = await taskRepository.getAll();
+        const existingAlarms = await taskAlarmRepository.getAllEnabled();
+        const existingAlarmTaskIds = new Set(existingAlarms.map((a) => a.taskId));
+
+        const corePrayerTasks = allTasks.filter((t) => t.isCore && t.taskType === 'prayer');
+        for (const coreTask of corePrayerTasks) {
+          if (!existingAlarmTaskIds.has(coreTask.id)) {
+            await taskAlarmRepository.upsert({
+              id: generateUUID(),
+              taskId: coreTask.id,
+              isEnabled: true,
+              reminderMinutes: 10,
+              soundEnabled: true,
+              vibrationEnabled: true,
+              snoozeMinutes: 5,
+              repeatRule: 'daily',
+            });
+          }
+        }
+      } catch (alarmErr) {
+        console.warn('Could not auto-seed prayer alarms:', alarmErr);
+      }
 
       set({
         isInitialized: true,

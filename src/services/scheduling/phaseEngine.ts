@@ -3,6 +3,7 @@ import { CalculatedTimes } from '../prayer/prayerCalculator';
 import { DEFAULT_PHASE_DEFINITIONS } from '../../constants/phases';
 import { phaseRepository } from '../../database/repositories/phaseRepository';
 import { taskRepository } from '../../database/repositories/taskRepository';
+import { taskAlarmRepository } from '../../database/repositories/taskAlarmRepository';
 import { generateUUID } from '../../utils/uuid';
 import { addDays, subDays } from 'date-fns';
 
@@ -62,6 +63,18 @@ export const phaseEngine = {
           updatedAt: now,
         };
         await taskRepository.create(coreTask);
+
+        // Seed default alarm for core prayers (enabled with 10-min reminder, sound & vibration)
+        await taskAlarmRepository.upsert({
+          id: generateUUID(),
+          taskId,
+          isEnabled: true,
+          reminderMinutes: 10,
+          soundEnabled: true,
+          vibrationEnabled: true,
+          snoozeMinutes: 5,
+          repeatRule: 'daily',
+        });
       }
 
       // Create default companion tasks

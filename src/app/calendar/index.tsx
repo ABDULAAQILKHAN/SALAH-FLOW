@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,26 +12,55 @@ import { Header } from '../../components/common/Header';
 import { PhaseCard } from '../../components/cards/PhaseCard';
 import { useScheduleStore } from '../../store/useScheduleStore';
 import { usePrayerStore } from '../../store/usePrayerStore';
+import { useAppStore } from '../../store/useAppStore';
 import { colors, typography, spacing, borderRadius } from '../../theme';
-import { formatDateKey, formatShortDate } from '../../utils/dateTime';
-import { addDays, subDays } from 'date-fns';
+import { formatDateKey } from '../../utils/dateTime';
+import { addDays, subDays, isSameDay } from 'date-fns';
+import { router } from 'expo-router';
+import { CalculatedTimes } from '../../services/prayer/prayerCalculator';
 
 export default function CalendarScreen() {
   const { loadSchedule, dailySchedule, toggleTaskStatus } = useScheduleStore();
   const { refreshTimings, todayTimings } = usePrayerStore();
+  const { setSelectedDate } = useAppStore();
 
   const [currentSelectedDate, setCurrentSelectedDate] = useState<Date>(new Date());
+  const [selectedDayTimings, setSelectedDayTimings] = useState<CalculatedTimes | null>(null);
 
-  // Generate 7-day strip centered around selected date
-  const days = [-3, -2, -1, 0, 1, 2, 3].map((offset) => addDays(currentSelectedDate, offset));
+  // Stable 21-day strip (7 days past, today, 13 days future)
+  const baseToday = useMemo(() => new Date(), []);
+  const days = useMemo(() => {
+    const list: Date[] = [];
+    for (let offset = -7; offset <= 14; offset++) {
+      list.push(addDays(baseToday, offset));
+    }
+    return list;
+  }, [baseToday]);
 
   useEffect(() => {
+    let isCancelled = false;
+
     const fetch = async () => {
       const timings = await refreshTimings(currentSelectedDate);
+      if (isCancelled) return;
+      setSelectedDayTimings(timings);
       await loadSchedule(formatDateKey(currentSelectedDate), timings);
     };
+
     fetch();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [currentSelectedDate]);
+
+  const isTodaySelected = isSameDay(currentSelectedDate, new Date());
+
+  const handleSetAsActiveOnDashboard = () => {
+    const key = formatDateKey(currentSelectedDate);
+    setSelectedDate(key);
+    router.replace('/');
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -44,35 +73,75 @@ export default function CalendarScreen() {
           year: 'numeric',
         })}
         showBack={true}
+        rightAction={{
+          icon: 'home-export-outline',
+          onPress: handleSetAsActiveOnDashboard,
+        }}
       />
 
       <View style={styles.container}>
-        {/* Horizontal Week Strip */}
-        <View style={styles.weekStrip}>
-          {days.map((day) => {
-            const isSelected = formatDateKey(day) === formatDateKey(currentSelectedDate);
-            const isToday = formatDateKey(day) === formatDateKey(new Date());
+        {/* Navigation & Quick Jump Bar */}
+        <View style={styles.subBar}>
+          <TouchableOpacity
+            style={[styles.jumpTodayBtn, isTodaySelected && styles.jumpTodayBtnActive]}
+            onPress={() => setCurrentSelectedDate(new Date())}
+          >
+            <MaterialCommunityIcons
+              name="calendar-today"
+              size={14}
+              color={isTodaySelected ? colors.textOnPrimary : colors.primary}
+            />
+            <Text
+              style={[
+                styles.jumpTodayText,
+                isTodaySelected && styles.jumpTodayTextActive,
+              ]}
+            >
+              Today
+            </Text>
+          </TouchableOpacity>
 
-            return (
-              <TouchableOpacity
-                key={day.toISOString()}
-                onPress={() => setCurrentSelectedDate(day)}
-                style={[
-                  styles.dayCard,
-                  isSelected && styles.dayCardSelected,
-                  isToday && !isSelected && styles.dayCardToday,
-                ]}
-              >
-                <Text style={[styles.dayName, isSelected && styles.dayNameSelected]}>
-                  {day.toLocaleDateString(undefined, { weekday: 'narrow' })}
-                </Text>
-                <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>
-                  {day.getDate()}
-                </Text>
-                {isToday && <View style={styles.todayDot} />}
-              </TouchableOpacity>
-            );
-          })}
+          <TouchableOpacity
+            style={styles.openDashboardBtn}
+            onPress={handleSetAsActiveOnDashboard}
+          >
+            <Text style={styles.openDashboardText}>Set as Active Routine</Text>
+            <MaterialCommunityIcons name="arrow-right" size={14} color={colors.primaryLight} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Horizontal Week Strip (Scrollable, stable) */}
+        <View style={styles.weekStripContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.weekStripContent}
+          >
+            {days.map((day) => {
+              const isSelected = formatDateKey(day) === formatDateKey(currentSelectedDate);
+              const isToday = isSameDay(day, new Date());
+
+              return (
+                <TouchableOpacity
+                  key={day.toISOString()}
+                  onPress={() => setCurrentSelectedDate(day)}
+                  style={[
+                    styles.dayCard,
+                    isSelected && styles.dayCardSelected,
+                    isToday && !isSelected && styles.dayCardToday,
+                  ]}
+                >
+                  <Text style={[styles.dayName, isSelected && styles.dayNameSelected]}>
+                    {day.toLocaleDateString(undefined, { weekday: 'narrow' })}
+                  </Text>
+                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>
+                    {day.getDate()}
+                  </Text>
+                  {isToday && <View style={[styles.todayDot, isSelected && styles.todayDotSelected]} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* Selected Day Routine Overview */}
@@ -98,12 +167,20 @@ export default function CalendarScreen() {
               key={phase.id}
               phase={phase}
               onToggleTaskStatus={async (taskId, status) => {
-                if (todayTimings) {
-                  await toggleTaskStatus(taskId, status, todayTimings);
+                const timings = selectedDayTimings || todayTimings;
+                if (timings) {
+                  await toggleTaskStatus(taskId, status, timings);
                 }
               }}
             />
           ))}
+
+          {(!dailySchedule?.phases || dailySchedule.phases.length === 0) && (
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="calendar-blank" size={48} color={colors.textMuted} />
+              <Text style={styles.emptyText}>No routine loaded for this date.</Text>
+            </View>
+          )}
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -118,21 +195,61 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  weekStrip: {
+  subBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  jumpTodayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    gap: 4,
+  },
+  jumpTodayBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  jumpTodayText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.primary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  jumpTodayTextActive: {
+    color: colors.textOnPrimary,
+  },
+  openDashboardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  openDashboardText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.primaryLight,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  weekStripContainer: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.surfaceBorder,
+    paddingVertical: spacing.sm,
+  },
+  weekStripContent: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs,
   },
   dayCard: {
     alignItems: 'center',
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
-    minWidth: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.lg,
+    minWidth: 44,
   },
   dayCardSelected: {
     backgroundColor: colors.primary,
@@ -142,9 +259,10 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   dayName: {
-    fontSize: 10,
-    color: colors.textSecondary,
+    fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.semibold,
+    color: colors.textSecondary,
+    marginBottom: 2,
   },
   dayNameSelected: {
     color: colors.textOnPrimary,
@@ -153,7 +271,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    marginTop: 2,
   },
   dayNumSelected: {
     color: colors.textOnPrimary,
@@ -163,20 +280,22 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.primary,
-    marginTop: 3,
+    marginTop: 4,
+  },
+  todayDotSelected: {
+    backgroundColor: colors.textOnPrimary,
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    paddingVertical: spacing.md,
+    padding: spacing.lg,
     paddingBottom: 40,
   },
   statsRow: {
     flexDirection: 'row',
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   statBox: {
     flex: 1,
@@ -188,14 +307,23 @@ const styles = StyleSheet.create({
     borderColor: colors.surfaceBorder,
   },
   statLabel: {
-    fontSize: 10,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: 4,
   },
   statValue: {
     fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.heavy,
+    fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
-    marginTop: 2,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    gap: spacing.md,
+  },
+  emptyText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textMuted,
   },
 });

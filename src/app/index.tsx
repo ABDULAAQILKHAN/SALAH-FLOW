@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Platform,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -76,9 +77,16 @@ export default function HomeScreen() {
     <View style={styles.container}>
       {/* Top App Bar */}
         <View style={[styles.topBar, { paddingTop: topPadding }]}>
-          <View>
-            <Text style={styles.greeting}>{getGreeting()}</Text>
-            <Text style={styles.dateText}>{formatReadableDate()}</Text>
+          <View style={styles.brandRow}>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.brandIcon}
+              resizeMode="contain"
+            />
+            <View>
+              <Text style={styles.greeting}>{getGreeting()}</Text>
+              <Text style={styles.dateText}>{formatReadableDate()}</Text>
+            </View>
           </View>
 
           <View style={styles.topActions}>
@@ -271,6 +279,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.surfaceBorder,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  brandIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
   },
   greeting: {
     fontSize: typography.fontSize.sm,

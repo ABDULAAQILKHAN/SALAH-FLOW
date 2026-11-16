@@ -33,6 +33,8 @@ export const notificationService = {
         enableVibrate: true,
         enableLights: true,
         lightColor: '#10B981',
+        bypassDnd: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     } catch (e) {
       console.warn('Failed to set alarms notification channel:', e);
@@ -48,6 +50,7 @@ export const notificationService = {
         enableVibrate: true,
         enableLights: true,
         lightColor: '#0EA5E9',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     } catch (e) {
       console.warn('Failed to set reminders notification channel:', e);
@@ -56,13 +59,15 @@ export const notificationService = {
     try {
       // Channel 3: Salah Reminders
       await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.PRAYERS, {
-        name: 'Prayer Calls',
+        name: 'Prayer Calls & Adhan',
         description: 'Notifications for the 5 daily prayers and Tahajjud',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 400, 200, 400],
+        vibrationPattern: [0, 500, 200, 500, 200, 1000],
         enableVibrate: true,
         enableLights: true,
         lightColor: '#10B981',
+        bypassDnd: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     } catch (e) {
       console.warn('Failed to set prayers notification channel:', e);
@@ -94,8 +99,9 @@ export const notificationService = {
       content: {
         title: params.title,
         body: params.body,
-        sound: true,
+        sound: 'default',
         priority: Notifications.AndroidNotificationPriority.MAX,
+        vibrate: [0, 500, 250, 500],
         data: params.data || {},
         ...(Platform.OS === 'android' ? { channelId: params.channelId } : {}),
       },
