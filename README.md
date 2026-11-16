@@ -12,6 +12,19 @@
 
 Unlike traditional productivity apps with rigid, static hours, SalahFlow organizes daily schedules into **prayer-anchored phases**. Tasks dynamically adjust their start times as prayer times change throughout the year due to seasonal astronomical variations, completely offline with zero tracking or external servers.
 
+> [!IMPORTANT]
+> ### 📲 Direct Download: Ready-to-Install APK Available!
+> You **do not** need to clone the repository or set up the developer tools if you simply want to install and use SalahFlow on your phone!
+>
+> A pre-built, ready-to-install Android APK package is already included directly in this repository:
+>
+> 📦 **[`SalahFlow v1.apk.zip`](./SalahFlow%20v1.apk.zip)**
+>
+> **Quick Steps to Install:**
+> 1. Download **`SalahFlow v1.apk.zip`** directly from the repository.
+> 2. Extract / unzip the file on your computer or Android smartphone.
+> 3. Tap the extracted `.apk` file on your Android device to install and enjoy SalahFlow instantly!
+
 ---
 
 ## 🌟 Key Highlights & Features
@@ -155,7 +168,11 @@ npx expo start
 
 ## 📦 Building the Android APK
 
-You have three options to build the Android APK:
+> [!TIP]
+> **Skip the build process entirely!**  
+> If you just want to run the app on your Android device, simply download and unzip the pre-built **[`SalahFlow v1.apk.zip`](./SalahFlow%20v1.apk.zip)** at the root of this repository.
+
+You have three options if you want to build the Android APK from source:
 1. **Local APK Build via Gradle (Fastest, Completely Free, No Cloud Required)**
 2. **Local EAS Build (Using EAS CLI Locally)**
 3. **Expo Cloud Build via EAS (Built on Expo's Servers)**
