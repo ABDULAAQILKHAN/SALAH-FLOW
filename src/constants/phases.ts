@@ -16,6 +16,8 @@ export interface DefaultPhaseDefinition {
     anchorPrayer: PrayerName;
     anchorRelation: 'before' | 'after';
     offsetMinutes: number;
+    schedulingType?: 'fixed_time' | 'prayer_relative';
+    fixedTime?: string;
   }[];
   defaultTasks?: {
     title: string;
@@ -59,6 +61,8 @@ export const DEFAULT_PHASE_DEFINITIONS: DefaultPhaseDefinition[] = [
         anchorPrayer: 'fajr',
         anchorRelation: 'after',
         offsetMinutes: 0,
+        schedulingType: 'fixed_time',
+        fixedTime: '05:45',
       },
     ],
     defaultTasks: [
@@ -101,6 +105,8 @@ export const DEFAULT_PHASE_DEFINITIONS: DefaultPhaseDefinition[] = [
         anchorPrayer: 'zuhr',
         anchorRelation: 'after',
         offsetMinutes: 0,
+        schedulingType: 'fixed_time',
+        fixedTime: '13:30',
       },
     ],
     defaultTasks: [
@@ -141,6 +147,8 @@ export const DEFAULT_PHASE_DEFINITIONS: DefaultPhaseDefinition[] = [
         anchorPrayer: 'asr',
         anchorRelation: 'after',
         offsetMinutes: 0,
+        schedulingType: 'fixed_time',
+        fixedTime: '16:45',
       },
     ],
     defaultTasks: [
@@ -173,6 +181,8 @@ export const DEFAULT_PHASE_DEFINITIONS: DefaultPhaseDefinition[] = [
         anchorPrayer: 'maghrib',
         anchorRelation: 'after',
         offsetMinutes: 0,
+        schedulingType: 'fixed_time',
+        fixedTime: '17:55',
       },
     ],
     defaultTasks: [
@@ -205,6 +215,8 @@ export const DEFAULT_PHASE_DEFINITIONS: DefaultPhaseDefinition[] = [
         anchorPrayer: 'isha',
         anchorRelation: 'after',
         offsetMinutes: 0,
+        schedulingType: 'fixed_time',
+        fixedTime: '20:30',
       },
     ],
     defaultTasks: [

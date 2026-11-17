@@ -1,5 +1,10 @@
 import { ScheduledTask, TaskAlarm } from '../../types';
-import { notificationService, NOTIFICATION_CHANNELS } from '../notifications/notificationService';
+import {
+  notificationService,
+  NOTIFICATION_CHANNELS,
+  getChannelForTone,
+  getSoundFilename,
+} from '../notifications/notificationService';
 import { taskAlarmRepository } from '../../database/repositories/taskAlarmRepository';
 import { subMinutesFromDate, formatTime12h } from '../../utils/dateTime';
 
@@ -47,12 +52,13 @@ export const alarmManager = {
 
     // 2. Main Exact Alarm (at task start time)
     if (task.startTime.getTime() > Date.now()) {
-      const channel = task.isCore && task.taskType === 'prayer'
-        ? NOTIFICATION_CHANNELS.PRAYERS
-        : NOTIFICATION_CHANNELS.ALARMS;
+      const isPrayer = task.isCore && task.taskType === 'prayer';
+      const tone = alarm.soundTone || 'peaceful_adhan';
+      const channel = isPrayer ? getChannelForTone(tone) : NOTIFICATION_CHANNELS.ALARMS;
+      const soundName = isPrayer ? getSoundFilename(tone) : 'default';
 
-      const title = task.isCore && task.taskType === 'prayer'
-        ? `Adhan / Salah: ${task.title}`
+      const title = isPrayer
+        ? `Salah: ${task.title}`
         : `${task.title}`;
 
       const body = task.description || `Scheduled for ${task.displayStartTime}`;
@@ -63,7 +69,8 @@ export const alarmManager = {
         body,
         triggerDate: task.startTime,
         channelId: channel,
-        data: { taskId: task.id, type: 'main_alarm' },
+        soundName,
+        data: { taskId: task.id, type: 'main_alarm', tone },
       });
       alarmScheduled = true;
     }
@@ -98,17 +105,24 @@ export const alarmManager = {
     return { scheduledCount, cancelledCount };
   },
 
-  async testTriggerAlarm(title: string, delaySeconds: number = 5): Promise<string> {
+  async testTriggerAlarm(
+    title: string,
+    delaySeconds: number = 5,
+    tone: string = 'peaceful_adhan'
+  ): Promise<string> {
     const triggerDate = new Date(Date.now() + delaySeconds * 1000);
     const identifier = `test_alarm_${Date.now()}`;
+    const channel = getChannelForTone(tone);
+    const soundName = getSoundFilename(tone);
 
     await notificationService.scheduleNotification({
       identifier,
-      title: `[TEST ALARM] ${title}`,
+      title: `[PRAYER ALARM] ${title}`,
       body: `Diagnostic alarm fired accurately at ${formatTime12h(triggerDate)}!`,
       triggerDate,
-      channelId: NOTIFICATION_CHANNELS.ALARMS,
-      data: { test: true },
+      channelId: channel,
+      soundName,
+      data: { test: true, tone },
     });
 
     return identifier;

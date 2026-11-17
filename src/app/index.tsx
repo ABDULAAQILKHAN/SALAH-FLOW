@@ -18,21 +18,17 @@ import { useAppStore } from '../store/useAppStore';
 import { usePrayerStore } from '../store/usePrayerStore';
 import { useScheduleStore } from '../store/useScheduleStore';
 import { colors, typography, spacing, borderRadius } from '../theme';
-import { CountdownCard } from '../components/cards/CountdownCard';
 import { PrayerTimingCard } from '../components/cards/PrayerTimingCard';
-import { LivePhaseWidgetCard } from '../components/cards/LivePhaseWidgetCard';
 import { PhaseCard } from '../components/cards/PhaseCard';
 import { ProgressBar } from '../components/common/ProgressBar';
-import { ConflictModal } from '../components/dialogs/ConflictModal';
-import {
-  formatReadableDate,
-  getGreeting,
-  formatDateKey,
-} from '../utils/dateTime';
+import { CitySelectorModal } from '../components/dialogs/CitySelectorModal';
+import { MissingPermissionsBanner } from '../components/common/MissingPermissionsBanner';
+import { LocationConfig } from '../types';
+import { formatDateKey } from '../utils/dateTime';
 
 export default function HomeScreen() {
-  const { hasCompletedOnboarding, selectedDate, setSelectedDate } = useAppStore();
-  const { todayTimings, nextPrayer, refreshTimings } = usePrayerStore();
+  const { hasCompletedOnboarding, selectedDate } = useAppStore();
+  const { location, todayTimings, nextPrayer, refreshTimings, updateLocation } = usePrayerStore();
   const {
     dailySchedule,
     loadSchedule,
@@ -41,11 +37,11 @@ export default function HomeScreen() {
   } = useScheduleStore();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [conflictModalVisible, setConflictModalVisible] = useState(false);
+  const [cityModalVisible, setCityModalVisible] = useState(false);
 
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 36) : insets.top;
-  const topPadding = Math.max(statusBarHeight, insets.top) + spacing.md;
+  const topPadding = Math.max(statusBarHeight, insets.top) + spacing.sm;
 
   // If onboarding not completed, route there
   useEffect(() => {
@@ -71,194 +67,177 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const conflictsCount = dailySchedule?.conflicts?.length || 0;
+  const handleSelectCity = async (loc: LocationConfig) => {
+    await updateLocation(loc);
+    const timings = await refreshTimings();
+    await loadSchedule(selectedDate, timings);
+  };
 
   return (
     <View style={styles.container}>
-      {/* Top App Bar */}
-        <View style={[styles.topBar, { paddingTop: topPadding }]}>
-          <View style={styles.brandRow}>
-            <Image
-              source={require('../../assets/icon.png')}
-              style={styles.brandIcon}
-              resizeMode="contain"
-            />
-            <View>
-              <Text style={styles.greeting}>{getGreeting()}</Text>
-              <Text style={styles.dateText}>{formatReadableDate()}</Text>
-            </View>
-          </View>
-
-          <View style={styles.topActions}>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => router.push('/prayers' as any)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialCommunityIcons name="mosque" size={20} color={colors.primary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => router.push('/calendar' as any)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialCommunityIcons name="calendar-month-outline" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => router.push('/statistics' as any)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialCommunityIcons name="chart-box-outline" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => router.push('/settings' as any)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialCommunityIcons name="cog-outline" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
+      {/* Streamlined Top App Bar */}
+      <View style={[styles.topBar, { paddingTop: topPadding }]}>
+        {/* Left: Brand */}
+        <View style={styles.brandContainer}>
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.brandIcon}
+            resizeMode="contain"
+          />
+          <Text style={styles.brandText}>SalahFlow</Text>
         </View>
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-            />
-          }
-        >
-          {/* Conflict Banner if any conflicts exist */}
-          {conflictsCount > 0 && (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setConflictModalVisible(true)}
-              style={styles.conflictBanner}
-            >
-              <MaterialCommunityIcons
-                name="alert-octagon"
-                size={18}
-                color={colors.gold}
-              />
-              <Text style={styles.conflictBannerText}>
-                {conflictsCount} scheduling conflict{conflictsCount > 1 ? 's' : ''} detected. Tap to inspect.
-              </Text>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={18}
-                color={colors.gold}
-              />
-            </TouchableOpacity>
-          )}
-
-          {/* Next Salah Countdown Card */}
-          <CountdownCard
-            nextPrayer={nextPrayer}
-            currentPhaseName={dailySchedule?.currentPhase?.name}
-            onPress={() => router.push('/prayers' as any)}
-          />
-
-          {/* Today's 5 Prayer Timings Horizontal Scroller */}
-          <PrayerTimingCard
-            timings={todayTimings}
-            activePrayer={nextPrayer?.name}
-          />
-
-          {/* Live Phase Widget Card — Active Phase & Auto-Update on Completion */}
-          {dailySchedule && (
-            <LivePhaseWidgetCard
-              schedule={dailySchedule}
-              onPhaseCompleted={onRefresh}
-            />
-          )}
-
-          {/* Today's Overall Progress Card */}
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeader}>
-              <View>
-                <Text style={styles.progressTitle}>Daily Routine Progress</Text>
-                <Text style={styles.progressSubtitle}>
-                  {dailySchedule?.completedTasks || 0} of {dailySchedule?.totalTasks || 0} tasks completed
-                </Text>
-              </View>
-              <Text style={styles.progressPercent}>
-                {dailySchedule?.overallProgress || 0}%
-              </Text>
-            </View>
-            <ProgressBar
-              progress={dailySchedule?.overallProgress || 0}
-              color={colors.primary}
-              height={7}
-            />
-
-            {/* Upcoming Task preview */}
-            {dailySchedule?.upcomingTask && (
-              <View style={styles.upcomingBox}>
-                <MaterialCommunityIcons
-                  name="ray-start-arrow"
-                  size={16}
-                  color={colors.primary}
-                />
-                <Text style={styles.upcomingLabel}>Next Task:</Text>
-                <Text style={styles.upcomingTitle} numberOfLines={1}>
-                  {dailySchedule.upcomingTask.title} ({dailySchedule.upcomingTask.displayStartTime})
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Section Header: Daily Phases */}
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionHeaderTitle}>Prayer-Oriented Phases</Text>
-            <TouchableOpacity
-              onPress={() => router.push('/phase/builder' as any)}
-              style={styles.addPhaseButton}
-            >
-              <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
-              <Text style={styles.addPhaseText}>Custom Phase</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Chronological Phase Cards */}
-          {dailySchedule?.phases?.map((phase) => (
-            <PhaseCard
-              key={phase.id}
-              phase={phase}
-              onToggleTaskStatus={async (taskId, status) => {
-                if (todayTimings) {
-                  await toggleTaskStatus(taskId, status, todayTimings);
-                }
-              }}
-            />
-          ))}
-        </ScrollView>
-
-        {/* Quick Add Task Floating Action Button */}
+        {/* Center: City Selector Chip */}
         <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => router.push('/task/new' as any)}
-          style={styles.fab}
+          style={styles.cityChip}
+          onPress={() => setCityModalVisible(true)}
+          activeOpacity={0.7}
         >
-          <MaterialCommunityIcons name="plus" size={26} color={colors.textOnPrimary} />
-          <Text style={styles.fabText}>Add Task</Text>
+          <MaterialCommunityIcons name="map-marker" size={13} color={colors.primary} />
+          <Text style={styles.cityChipText} numberOfLines={1}>
+            {location.cityName}
+          </Text>
+          <MaterialCommunityIcons name="chevron-down" size={13} color={colors.textSecondary} />
         </TouchableOpacity>
 
-        {/* Conflict Inspection Modal */}
-        {dailySchedule?.conflicts && (
-          <ConflictModal
-            visible={conflictModalVisible}
-            conflicts={dailySchedule.conflicts}
-            onClose={() => setConflictModalVisible(false)}
-          />
-        )}
+        {/* Right: Quick Options / Navigation */}
+        <View style={styles.topActions}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => router.push('/prayers' as any)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="mosque" size={18} color={colors.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => router.push('/calendar' as any)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="calendar-month-outline" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => router.push('/alarms/settings' as any)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="bell-ring-outline" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => router.push('/settings' as any)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="cog-outline" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        {/* Warning Banner at top if critical permissions are missing */}
+        <MissingPermissionsBanner />
+
+        {/* Today's 5 Prayer Timings Horizontal Scroller */}
+        <PrayerTimingCard
+          timings={todayTimings}
+          activePrayer={nextPrayer?.name}
+        />
+
+        {/* Today's Overall Progress Card */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressHeader}>
+            <View>
+              <Text style={styles.progressTitle}>Daily Routine Progress</Text>
+              <Text style={styles.progressSubtitle}>
+                {dailySchedule?.completedTasks || 0} of {dailySchedule?.totalTasks || 0} tasks completed
+              </Text>
+            </View>
+            <Text style={styles.progressPercent}>
+              {dailySchedule?.overallProgress || 0}%
+            </Text>
+          </View>
+          <ProgressBar
+            progress={dailySchedule?.overallProgress || 0}
+            color={colors.primary}
+            height={7}
+          />
+
+          {/* Upcoming Task preview */}
+          {dailySchedule?.upcomingTask && (
+            <View style={styles.upcomingBox}>
+              <MaterialCommunityIcons
+                name="ray-start-arrow"
+                size={16}
+                color={colors.primary}
+              />
+              <Text style={styles.upcomingLabel}>Next Task:</Text>
+              <Text style={styles.upcomingTitle} numberOfLines={1}>
+                {dailySchedule.upcomingTask.title} ({dailySchedule.upcomingTask.displayStartTime})
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Section Header: Daily Phases */}
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionHeaderTitle}>Prayer-Oriented Phases</Text>
+          <TouchableOpacity
+            onPress={() => router.push('/phase/builder' as any)}
+            style={styles.addPhaseButton}
+          >
+            <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+            <Text style={styles.addPhaseText}>Custom Phase</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Chronological Phase Cards */}
+        {dailySchedule?.phases?.map((phase) => (
+          <PhaseCard
+            key={phase.id}
+            phase={phase}
+            onToggleTaskStatus={async (taskId, status) => {
+              if (todayTimings) {
+                await toggleTaskStatus(taskId, status, todayTimings);
+              }
+            }}
+          />
+        ))}
+
+        {/* Bottom spacing */}
+        <View style={{ height: 60 }} />
+      </ScrollView>
+
+      {/* Quick Add Task Floating Action Button */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => router.push('/task/new' as any)}
+        style={styles.fab}
+      >
+        <MaterialCommunityIcons name="plus" size={26} color={colors.textOnPrimary} />
+        <Text style={styles.fabText}>Add Task</Text>
+      </TouchableOpacity>
+
+      {/* Quick City Selector Modal */}
+      <CitySelectorModal
+        visible={cityModalVisible}
+        currentCityName={location.cityName}
+        onSelectCity={handleSelectCity}
+        onClose={() => setCityModalVisible(false)}
+      />
+    </View>
   );
 }
 
@@ -275,42 +254,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.surfaceBorder,
+    gap: spacing.xs,
   },
-  brandRow: {
+  brandContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 6,
   },
   brandIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.md,
+    width: 28,
+    height: 28,
+    borderRadius: borderRadius.sm,
+  },
+  brandText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+    letterSpacing: 0.2,
+  },
+  cityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: borderRadius.full,
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
+    gap: 4,
+    maxWidth: 120,
   },
-  greeting: {
-    fontSize: typography.fontSize.sm,
-    color: colors.primaryLight,
+  cityChipText: {
+    fontSize: 11,
     fontWeight: typography.fontWeight.semibold,
-  },
-  dateText: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.heavy,
-    color: colors.textPrimary,
+    color: colors.primary,
   },
   topActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 6,
   },
   iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.surfaceHighlight,
     alignItems: 'center',
     justifyContent: 'center',

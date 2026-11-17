@@ -16,8 +16,42 @@ Notifications.setNotificationHandler({
 export const NOTIFICATION_CHANNELS = {
   ALARMS: 'salahflow_alarms',
   REMINDERS: 'salahflow_reminders',
-  PRAYERS: 'salahflow_prayers',
+  PRAYERS_ADHAN: 'salahflow_prayers_adhan',
+  PRAYERS_CHIME: 'salahflow_prayers_chime',
+  PRAYERS_BIRDS: 'salahflow_prayers_birds',
+  PRAYERS_BELL: 'salahflow_prayers_bell',
+  PRAYERS_DEFAULT: 'salahflow_prayers_default',
 };
+
+export function getChannelForTone(toneId?: string): string {
+  switch (toneId) {
+    case 'peaceful_adhan':
+      return NOTIFICATION_CHANNELS.PRAYERS_ADHAN;
+    case 'soft_chime':
+      return NOTIFICATION_CHANNELS.PRAYERS_CHIME;
+    case 'dawn_birds':
+      return NOTIFICATION_CHANNELS.PRAYERS_BIRDS;
+    case 'calm_bell':
+      return NOTIFICATION_CHANNELS.PRAYERS_BELL;
+    default:
+      return NOTIFICATION_CHANNELS.PRAYERS_DEFAULT;
+  }
+}
+
+export function getSoundFilename(toneId?: string): string {
+  switch (toneId) {
+    case 'peaceful_adhan':
+      return 'peaceful_adhan.wav';
+    case 'soft_chime':
+      return 'soft_chime.wav';
+    case 'dawn_birds':
+      return 'dawn_birds.wav';
+    case 'calm_bell':
+      return 'calm_bell.wav';
+    default:
+      return 'default';
+  }
+}
 
 export const notificationService = {
   async setupChannels(): Promise<void> {
@@ -56,21 +90,52 @@ export const notificationService = {
       console.warn('Failed to set reminders notification channel:', e);
     }
 
-    try {
-      // Channel 3: Salah Reminders
-      await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.PRAYERS, {
-        name: 'Prayer Calls & Adhan',
-        description: 'Notifications for the 5 daily prayers and Tahajjud',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 200, 500, 200, 1000],
-        enableVibrate: true,
-        enableLights: true,
-        lightColor: '#10B981',
-        bypassDnd: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-    } catch (e) {
-      console.warn('Failed to set prayers notification channel:', e);
+    // Peaceful Prayer Alarm Channels
+    const prayerChannels = [
+      {
+        id: NOTIFICATION_CHANNELS.PRAYERS_ADHAN,
+        name: 'Prayer Alarm (Peaceful Adhan)',
+        sound: 'peaceful_adhan.wav',
+      },
+      {
+        id: NOTIFICATION_CHANNELS.PRAYERS_CHIME,
+        name: 'Prayer Alarm (Soft Chime)',
+        sound: 'soft_chime.wav',
+      },
+      {
+        id: NOTIFICATION_CHANNELS.PRAYERS_BIRDS,
+        name: 'Prayer Alarm (Morning Birds)',
+        sound: 'dawn_birds.wav',
+      },
+      {
+        id: NOTIFICATION_CHANNELS.PRAYERS_BELL,
+        name: 'Prayer Alarm (Calm Bell)',
+        sound: 'calm_bell.wav',
+      },
+      {
+        id: NOTIFICATION_CHANNELS.PRAYERS_DEFAULT,
+        name: 'Prayer Alarm (Default Tone)',
+        sound: undefined,
+      },
+    ];
+
+    for (const ch of prayerChannels) {
+      try {
+        await Notifications.setNotificationChannelAsync(ch.id, {
+          name: ch.name,
+          description: 'Audible prayer call for obligatory Salah and Tahajjud',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 500, 200, 500, 200, 1000],
+          enableVibrate: true,
+          enableLights: true,
+          lightColor: '#10B981',
+          bypassDnd: true,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          ...(ch.sound ? { sound: ch.sound } : {}),
+        });
+      } catch (e) {
+        console.warn(`Failed to set channel ${ch.id}:`, e);
+      }
     }
   },
 
@@ -80,6 +145,7 @@ export const notificationService = {
     body: string;
     triggerDate: Date;
     channelId: string;
+    soundName?: string;
     data?: Record<string, any>;
   }): Promise<string> {
     // If the trigger date is in the past, do not schedule
@@ -94,12 +160,16 @@ export const notificationService = {
       // Ignore if not present
     }
 
+    const sound = params.soundName && params.soundName !== 'default'
+      ? params.soundName
+      : 'default';
+
     return await Notifications.scheduleNotificationAsync({
       identifier: params.identifier,
       content: {
         title: params.title,
         body: params.body,
-        sound: 'default',
+        sound,
         priority: Notifications.AndroidNotificationPriority.MAX,
         vibrate: [0, 500, 250, 500],
         data: params.data || {},

@@ -48,6 +48,7 @@ export const SCHEMA_SQL = `
     alarm_time TEXT,
     reminder_minutes INTEGER NOT NULL DEFAULT 0,
     sound_enabled INTEGER NOT NULL DEFAULT 1,
+    sound_tone TEXT DEFAULT 'peaceful_adhan',
     vibration_enabled INTEGER NOT NULL DEFAULT 1,
     snooze_minutes INTEGER NOT NULL DEFAULT 5,
     repeat_rule TEXT NOT NULL DEFAULT 'daily',

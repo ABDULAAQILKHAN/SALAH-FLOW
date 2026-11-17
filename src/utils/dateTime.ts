@@ -38,16 +38,24 @@ export function formatTime24h(date: Date): string {
 }
 
 export function parseTimeToDate(timeString: string, baseDate: Date = new Date()): Date {
-  // timeString can be "HH:mm" (24h) or "h:mm a"
+  // timeString can be "HH:mm" (24h) or "h:mm a" / "h:mm am/pm"
   const clean = timeString.trim();
   const dateObj = new Date(baseDate);
 
   if (clean.includes(':')) {
-    const parts = clean.split(':');
-    const hours = parseInt(parts[0], 10);
-    const mins = parseInt(parts[1].substring(0, 2), 10);
+    const isPM = /pm/i.test(clean);
+    const isAM = /am/i.test(clean);
+    const parts = clean.replace(/[^\d:]/g, '').split(':');
+    let hours = parseInt(parts[0], 10);
+    const mins = parseInt(parts[1]?.substring(0, 2) || '0', 10);
+
     if (!isNaN(hours) && !isNaN(mins)) {
-      return setMinutes(setHours(dateObj, hours), mins);
+      if (isPM && hours < 12) {
+        hours += 12;
+      } else if (isAM && hours === 12) {
+        hours = 0;
+      }
+      return setMinutes(setHours(setSeconds(dateObj, 0), hours), mins);
     }
   }
 

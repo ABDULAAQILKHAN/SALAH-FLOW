@@ -51,12 +51,19 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#10B981"
+          "color": "#10B981",
+          "sounds": [
+            "./assets/sounds/soft_chime.wav",
+            "./assets/sounds/calm_bell.wav",
+            "./assets/sounds/peaceful_adhan.wav",
+            "./assets/sounds/dawn_birds.wav"
+          ]
         }
       ],
       "expo-sqlite",
       "./plugins/withAndroidExactAlarm",
-      "./plugins/withAndroidPhaseWidget"
+      "./plugins/withAndroidPhaseWidget",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

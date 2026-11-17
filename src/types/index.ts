@@ -71,6 +71,7 @@ export interface TaskAlarm {
   alarmTime?: string; // HH:mm
   reminderMinutes: number; // 0, 5, 10, 15, 30
   soundEnabled: boolean;
+  soundTone?: string; // 'peaceful_adhan' | 'soft_chime' | 'dawn_birds' | 'calm_bell' | 'default'
   vibrationEnabled: boolean;
   snoozeMinutes: number;
   repeatRule: RepeatRule;

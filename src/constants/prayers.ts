@@ -89,15 +89,39 @@ export const DEFAULT_PRAYER_CONFIG: PrayerCalculationConfig = {
 };
 
 export const DEFAULT_LOCATION: LocationConfig = {
-  cityName: 'Mumbai',
+  cityName: 'Indore',
   countryName: 'India',
-  latitude: 19.076,
-  longitude: 72.8777,
+  latitude: 22.7196,
+  longitude: 75.8577,
   timezone: 'Asia/Kolkata',
   isManual: true,
 };
 
 export const POPULAR_LOCATIONS: LocationConfig[] = [
+  {
+    cityName: 'Indore',
+    countryName: 'India',
+    latitude: 22.7196,
+    longitude: 75.8577,
+    timezone: 'Asia/Kolkata',
+    isManual: true,
+  },
+  {
+    cityName: 'Ujjain',
+    countryName: 'India',
+    latitude: 23.1765,
+    longitude: 75.7885,
+    timezone: 'Asia/Kolkata',
+    isManual: true,
+  },
+  {
+    cityName: 'Bhopal',
+    countryName: 'India',
+    latitude: 23.2599,
+    longitude: 77.4126,
+    timezone: 'Asia/Kolkata',
+    isManual: true,
+  },
   {
     cityName: 'Mumbai',
     countryName: 'India',

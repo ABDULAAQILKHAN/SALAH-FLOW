@@ -20,6 +20,7 @@ import { taskRepository } from '../../database/repositories/taskRepository';
 import { taskAlarmRepository } from '../../database/repositories/taskAlarmRepository';
 import { useScheduleStore } from '../../store/useScheduleStore';
 import { usePrayerStore } from '../../store/usePrayerStore';
+import { PEACEFUL_ALARM_TONES } from '../../constants/sounds';
 import { colors, typography, spacing, borderRadius } from '../../theme';
 import {
   Task,
@@ -56,7 +57,9 @@ export default function EditTaskScreen() {
   const [alarmEnabled, setAlarmEnabled] = useState(true);
   const [reminderMinutes, setReminderMinutes] = useState(10);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundTone, setSoundTone] = useState('peaceful_adhan');
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [salahTimingMode, setSalahTimingMode] = useState<'fixed' | 'relative'>('fixed');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -77,7 +80,12 @@ export default function EditTaskScreen() {
           if (t.anchorPrayer) setAnchorPrayer(t.anchorPrayer);
           if (t.anchorRelation) setAnchorRelation(t.anchorRelation);
           setOffsetMinutes(t.offsetMinutes.toString());
-          if (t.fixedTime) setFixedTime(t.fixedTime);
+          if (t.fixedTime) {
+            setFixedTime(t.fixedTime);
+            setSalahTimingMode('fixed');
+          } else {
+            setSalahTimingMode(t.schedulingType === 'fixed_time' ? 'fixed' : 'relative');
+          }
         }
 
         if (a) {
@@ -85,6 +93,7 @@ export default function EditTaskScreen() {
           setAlarmEnabled(a.isEnabled);
           setReminderMinutes(a.reminderMinutes);
           setSoundEnabled(a.soundEnabled);
+          if (a.soundTone) setSoundTone(a.soundTone);
           setVibrationEnabled(a.vibrationEnabled);
         }
       } catch (e) {
@@ -111,17 +120,30 @@ export default function EditTaskScreen() {
 
     setSaving(true);
     try {
+      const isObligatorySalah = task.isCore && task.taskType === 'prayer';
+      const resolvedSchedulingType: SchedulingType = isObligatorySalah
+        ? (salahTimingMode === 'fixed' ? 'fixed_time' : 'prayer_relative')
+        : schedulingType;
+
       const updatedTask: Task = {
         ...task,
         title: title.trim(),
         description: description.trim() || undefined,
         durationMinutes: duration,
         priority,
-        schedulingType: task.isCore ? task.schedulingType : schedulingType,
-        fixedTime: schedulingType === 'fixed_time' ? fixedTime.trim() : undefined,
-        anchorPrayer: schedulingType === 'prayer_relative' ? anchorPrayer : undefined,
-        anchorRelation: schedulingType === 'prayer_relative' ? anchorRelation : undefined,
-        offsetMinutes: schedulingType === 'prayer_relative' ? parseInt(offsetMinutes, 10) || 0 : 0,
+        schedulingType: resolvedSchedulingType,
+        fixedTime: (isObligatorySalah && salahTimingMode === 'fixed') || (!isObligatorySalah && schedulingType === 'fixed_time')
+          ? fixedTime.trim()
+          : undefined,
+        anchorPrayer: resolvedSchedulingType === 'prayer_relative'
+          ? (isObligatorySalah ? task.anchorPrayer : anchorPrayer)
+          : undefined,
+        anchorRelation: resolvedSchedulingType === 'prayer_relative'
+          ? (isObligatorySalah ? 'after' : anchorRelation)
+          : undefined,
+        offsetMinutes: resolvedSchedulingType === 'prayer_relative'
+          ? (parseInt(offsetMinutes, 10) || 0)
+          : 0,
       };
 
       await taskRepository.update(updatedTask);
@@ -134,6 +156,7 @@ export default function EditTaskScreen() {
           isEnabled: true,
           reminderMinutes,
           soundEnabled,
+          soundTone,
           vibrationEnabled,
           snoozeMinutes: 5,
           repeatRule: alarm?.repeatRule || 'daily',
@@ -277,6 +300,208 @@ export default function EditTaskScreen() {
           )}
         </View>
 
+        {/* Core Salah Mosque / Jama'at Timing Section */}
+        {isObligatorySalah && (
+          <View style={styles.card}>
+            <View style={styles.sectionHeaderRow}>
+              <MaterialCommunityIcons name="clock-edit-outline" size={20} color={colors.primary} />
+              <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                <Text style={styles.sectionHeader}>Mosque / Jama'at Salah Time</Text>
+                <Text style={styles.sectionDesc}>
+                  Set the specific time you pray at the mosque. Update this manually when seasonal schedules change.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.salahModeRow}>
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  salahTimingMode === 'fixed' && styles.modeButtonSelected,
+                ]}
+                onPress={() => setSalahTimingMode('fixed')}
+              >
+                <MaterialCommunityIcons
+                  name="clock-time-four-outline"
+                  size={16}
+                  color={salahTimingMode === 'fixed' ? colors.primary : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    salahTimingMode === 'fixed' && styles.modeButtonTextSelected,
+                  ]}
+                >
+                  Manual Mosque Time
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  salahTimingMode === 'relative' && styles.modeButtonSelected,
+                ]}
+                onPress={() => setSalahTimingMode('relative')}
+              >
+                <MaterialCommunityIcons
+                  name="ray-start-arrow"
+                  size={16}
+                  color={salahTimingMode === 'relative' ? colors.primary : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    salahTimingMode === 'relative' && styles.modeButtonTextSelected,
+                  ]}
+                >
+                  At Prayer Entrance
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {salahTimingMode === 'fixed' ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.label}>Jama'at Prayer Time (e.g. 01:30 PM or 13:30)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={fixedTime}
+                  onChangeText={setFixedTime}
+                  placeholder="e.g. 01:30 PM or 13:30"
+                  placeholderTextColor={colors.textMuted}
+                />
+                <Text style={styles.hintText}>
+                  This core prayer will be scheduled exactly at this time every day until you change it.
+                </Text>
+              </View>
+            ) : (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.label}>Offset after Prayer Entrance (Minutes)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={offsetMinutes}
+                  onChangeText={setOffsetMinutes}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Standard Scheduling Settings for Non-Core Tasks */}
+        {!task.isCore && (
+          <View style={styles.card}>
+            <Text style={styles.sectionHeader}>Scheduling Configuration</Text>
+            <Text style={styles.sectionDesc}>
+              Choose how this companion task aligns with daily prayer phases.
+            </Text>
+
+            <View style={styles.salahModeRow}>
+              {(['prayer_relative', 'fixed_time', 'flexible'] as SchedulingType[]).map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.modeButton,
+                    schedulingType === type && styles.modeButtonSelected,
+                  ]}
+                  onPress={() => setSchedulingType(type)}
+                >
+                  <Text
+                    style={[
+                      styles.modeButtonText,
+                      schedulingType === type && styles.modeButtonTextSelected,
+                    ]}
+                  >
+                    {type === 'prayer_relative'
+                      ? 'Relative'
+                      : type === 'fixed_time'
+                      ? 'Fixed'
+                      : 'Flexible'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {schedulingType === 'fixed_time' && (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.label}>Clock Time (e.g. 10:00 AM or 10:00)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={fixedTime}
+                  onChangeText={setFixedTime}
+                  placeholder="10:00 AM"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+
+            {schedulingType === 'prayer_relative' && (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.label}>Anchor Prayer</Text>
+                <View style={styles.salahModeRow}>
+                  {(['fajr', 'zuhr', 'asr', 'maghrib', 'isha'] as PrayerName[]).map((p) => (
+                    <TouchableOpacity
+                      key={p}
+                      style={[
+                        styles.modeButton,
+                        anchorPrayer === p && styles.modeButtonSelected,
+                      ]}
+                      onPress={() => setAnchorPrayer(p)}
+                    >
+                      <Text
+                        style={[
+                          styles.modeButtonText,
+                          anchorPrayer === p && styles.modeButtonTextSelected,
+                        ]}
+                      >
+                        {p.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Relation</Text>
+                    <View style={styles.salahModeRow}>
+                      {(['before', 'after'] as AnchorRelation[]).map((rel) => (
+                        <TouchableOpacity
+                          key={rel}
+                          style={[
+                            styles.modeButton,
+                            anchorRelation === rel && styles.modeButtonSelected,
+                          ]}
+                          onPress={() => setAnchorRelation(rel)}
+                        >
+                          <Text
+                            style={[
+                              styles.modeButtonText,
+                              anchorRelation === rel && styles.modeButtonTextSelected,
+                            ]}
+                          >
+                            {rel.toUpperCase()}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Offset (Min)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={offsetMinutes}
+                      onChangeText={setOffsetMinutes}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Alarm Settings */}
         <View style={styles.card}>
           <View style={styles.toggleRow}>
@@ -318,6 +543,31 @@ export default function EditTaskScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {/* Tone selector */}
+              <Text style={[styles.label, { marginTop: spacing.md }]}>Peaceful Tone</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                {PEACEFUL_ALARM_TONES.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[
+                      styles.reminderChip,
+                      soundTone === t.id && styles.reminderChipSelected,
+                      { marginRight: spacing.xs },
+                    ]}
+                    onPress={() => setSoundTone(t.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.reminderChipText,
+                        soundTone === t.id && styles.reminderChipTextSelected,
+                      ]}
+                    >
+                      {t.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
               <View style={[styles.toggleRow, { marginTop: spacing.md }]}>
                 <Text style={styles.optionLabel}>Sound Notification</Text>
@@ -421,10 +671,51 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
     color: colors.textPrimary,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
   sectionDesc: {
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  salahModeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceHighlight,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+    gap: 6,
+  },
+  modeButtonSelected: {
+    backgroundColor: colors.primaryMuted,
+    borderColor: colors.primary,
+  },
+  modeButtonText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.medium,
+  },
+  modeButtonTextSelected: {
+    color: colors.primary,
+    fontWeight: typography.fontWeight.bold,
+  },
+  hintText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   label: {
     fontSize: typography.fontSize.xs,

@@ -68,6 +68,7 @@ export default function RootLayout() {
           <Stack.Screen name="calendar/index" />
           <Stack.Screen name="settings/index" />
           <Stack.Screen name="statistics/index" />
+          <Stack.Screen name="alarms/settings" />
           <Stack.Screen name="alarms/test" />
         </Stack>
       </GestureHandlerRootView>

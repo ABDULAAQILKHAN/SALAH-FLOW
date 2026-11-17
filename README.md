@@ -30,21 +30,27 @@ Unlike traditional productivity apps with rigid, static hours, SalahFlow organiz
 ## 🌟 Key Highlights & Features
 
 - **100% Offline-First Architecture**: Works entirely on-device using local astronomical mathematics (`adhan` JS) and Expo SQLite. No cloud account, internet connection, or subscriptions required.
+- **Clean, Focused Daily Routine Dashboard**: Uncluttered routine timeline without distracting countdown banners, showing your phases and custom tasks with pristine clarity.
+- **Manual Mosque / Jama'at Congregation Timing**: While astronomical prayer start and end times calculate automatically according to your selected city and calculation method (Hanafi/Karachi), you can manually set and adjust the fixed prayer/Jama'at time for each core Salah task (Fajr, Zuhr, Asr, Maghrib, Isha, Tahajjud) as mosque schedules change seasonally.
+- **Multi-City Support with Instant Switching**: Pre-configured with Indian cities including **Indore** (default), **Ujjain**, **Bhopal**, **Mumbai**, **Delhi**, etc., plus GPS quick-detect. Switching cities immediately updates Hanafi astronomical prayer windows while preserving your personal Jama'at schedule.
+- **Dedicated Prayer Alarms & Peaceful Tones**:
+  - Full control over notifications and alarms for every core prayer.
+  - Advance reminders: At Salah time, 10m, 15m, or 30m before.
+  - Curated high-fidelity peaceful tones: **Peaceful Adhan**, **Soft Chime**, **Morning Birds**, **Calm Bell**, and Device Default.
+  - In-app audio tone preview using `expo-audio`.
+  - Android Exact Alarm (`SCHEDULE_EXACT_ALARM`) integration to guarantee alarms ring precisely on time.
+- **Smart Permission Diagnostic Banner**: Prominent banner alerts if notification or exact alarm permissions are disabled, with a one-tap direct fix button.
 - **Five Default Daily Routine Phases**:
   1. **Phase 1 — Early Morning / Dawn**: Anchored by **Tahajjud** (pre-dawn vigil) and **Fajr** (dawn prayer) as protected core tasks.
   2. **Phase 2 — Morning / Midday**: Anchored by **Zuhr** (noon prayer).
   3. **Phase 3 — Afternoon**: Anchored by **Asr** (afternoon prayer with Hanafi double-shadow calculation).
   4. **Phase 4 — Evening**: Anchored by **Maghrib** (sunset prayer).
   5. **Phase 5 — Night**: Anchored by **Isha** (night prayer).
-- **Core Salah Protection**: Obligatory prayer tasks are locked into their astronomical phases to ensure daily obligations are never compromised.
+- **Core Salah Protection**: Obligatory prayer tasks cannot be accidentally deleted and stay anchored to their routine phases.
 - **Android Home Screen Live Phase Widget**:
   - Displays the currently active phase, core prayer, time window, countdown to completion, and progress bar.
   - Automatically updates when each phase ends via native Android `AlarmManager`.
   - Tapping the widget launches the app directly into your daily routine.
-- **Audible Notification Alarms & Reminders**:
-  - High-priority audible alarms with sound, custom vibration patterns, and lockscreen visibility.
-  - Default **10-minute advance notice** automatically enabled for all core prayers.
-  - Built-in **Instant 5-Second Test Alarm** in Settings to verify sound and vibration.
 - **21-Day Interactive Routine Calendar**:
   - Horizontal scrolling strip (`-7` to `+14` days) to view past adherence and future routines.
   - Quick-jump "Today" button and "Set as Active Routine" selector.
@@ -63,37 +69,40 @@ Unlike traditional productivity apps with rigid, static hours, SalahFlow organiz
 ```
 SalahFlow/
 ├── android/                          # Continuous Native Generation (CNG) Android project
-├── assets/                           # High-resolution icons, splash screens, and adaptive assets
+├── assets/                           # High-resolution icons, splash screens, and audio tones
+│   └── sounds/                       # Peaceful Adhan, Soft Chime, Morning Birds, Calm Bell
 ├── plugins/                          # Custom Expo Config Plugins
 │   ├── withAndroidExactAlarm.js      # SCHEDULE_EXACT_ALARM, boot receiver & wake-lock permissions
 │   └── withAndroidPhaseWidget.js     # Native Android AppWidgetProvider, RemoteViews & Kotlin bridge
 ├── src/
 │   ├── app/                          # Expo Router Navigation Screens
 │   │   ├── _layout.tsx               # Root Layout with branded splash startup & dark theme
-│   │   ├── index.tsx                 # Dashboard (Countdown, Salah card, Live phase, Daily routine)
+│   │   ├── index.tsx                 # Clean Dashboard with Navbar actions & Daily Routine
 │   │   ├── onboarding.tsx            # First-launch onboarding (GPS location & Asr calculation)
 │   │   ├── phase/
 │   │   │   ├── [id].tsx              # Phase detail & task reordering
 │   │   │   └── builder.tsx           # Custom phase creation (anchored to core tasks)
 │   │   ├── task/
 │   │   │   ├── new.tsx               # Task creation (prayer-relative, fixed-time, flexible)
-│   │   │   └── [id].tsx              # Task editing & per-task alarm configuration
+│   │   │   └── [id].tsx              # Mosque/Jama'at timing & per-task alarm configuration
+│   │   ├── alarms/
+│   │   │   ├── settings.tsx          # Dedicated Prayer Alarms & Peaceful Tone selector
+│   │   │   └── test.tsx              # Android exact alarm diagnostic & permission inspector
 │   │   ├── prayers/index.tsx         # Astronomical prayer timetable (daily & monthly view)
 │   │   ├── calendar/index.tsx        # 21-day routine browser & adherence tracker
 │   │   ├── settings/index.tsx        # Location, calculation method, audio alarm test & backup
-│   │   ├── statistics/index.tsx      # Adherence streaks & completion analytics
-│   │   └── alarms/test.tsx           # Android exact alarm diagnostic & permission inspector
+│   │   └── statistics/index.tsx      # Adherence streaks & completion analytics
 │   ├── components/                   # Modular UI Components
-│   │   ├── cards/                    # LivePhaseWidgetCard, CountdownCard, PrayerTimingCard, TaskCard
-│   │   ├── common/                   # Header, Button, Badge, ProgressBar
-│   │   └── dialogs/                  # ConflictModal (prayer overlap warning dialog)
+│   │   ├── cards/                    # TaskCard, PrayerTimingCard
+│   │   ├── common/                   # Header, Button, Badge, ProgressBar, MissingPermissionsBanner
+│   │   └── dialogs/                  # CitySelectorModal (Indore, Ujjain, search & GPS)
 │   ├── database/                     # Expo SQLite Storage Engine
 │   │   ├── index.ts                  # Database connection & migration coordinator
 │   │   ├── schema.ts                 # DDL schema, foreign keys, and indexes
 │   │   └── repositories/             # Task, Phase, Alarm, Prayer, Settings repositories
 │   ├── services/                     # Core Business Logic
-│   │   ├── alarms/                   # AlarmManager, exact alarm scheduling & rescheduler
-│   │   ├── notifications/            # Android notification channels (Alarms, Reminders, Prayers)
+│   │   ├── alarms/                   # AlarmManager, exact alarm scheduling & soundPlayer
+│   │   ├── notifications/            # Android notification channels (Adhan, Chime, Birds, Bell)
 │   │   ├── prayer/                   # Adhan JS calculation engine & yearly caching
 │   │   ├── scheduling/               # Phase boundaries, schedule generator & conflict resolver
 │   │   └── widget/                   # Home screen widget data synchronization service

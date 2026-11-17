@@ -22,6 +22,9 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 export async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   try {
     await db.execAsync(SCHEMA_SQL);
+    try {
+      await db.execAsync("ALTER TABLE task_alarms ADD COLUMN sound_tone TEXT DEFAULT 'peaceful_adhan';");
+    } catch {}
   } catch (error) {
     console.error('Failed to initialize database schema:', error);
     throw error;

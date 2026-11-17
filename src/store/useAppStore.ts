@@ -61,6 +61,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               isEnabled: true,
               reminderMinutes: 10,
               soundEnabled: true,
+              soundTone: 'peaceful_adhan',
               vibrationEnabled: true,
               snoozeMinutes: 5,
               repeatRule: 'daily',

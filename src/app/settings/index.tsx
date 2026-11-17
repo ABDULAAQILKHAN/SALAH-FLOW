@@ -21,6 +21,7 @@ import { alarmManager } from '../../services/alarms/alarmManager';
 import { backupService } from '../../services/backup/backupService';
 import { resetDatabase } from '../../database';
 import { phaseEngine } from '../../services/scheduling/phaseEngine';
+import { MissingPermissionsBanner } from '../../components/common/MissingPermissionsBanner';
 import { colors, typography, spacing, borderRadius } from '../../theme';
 import {
   CALCULATION_METHODS,
@@ -123,6 +124,9 @@ export default function SettingsScreen() {
       <Header title="Settings" subtitle="Prayer Timings & Routine Config" showBack={true} />
 
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {/* Missing Permissions Banner */}
+        <MissingPermissionsBanner />
+
         {/* Section: Location */}
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Location Configuration</Text>
@@ -252,18 +256,22 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionHeader}>Alarms & Notification System</Text>
           <Text style={styles.itemSub}>
-            Audible alarms and 10-minute advance reminders for all 5 daily prayers and tasks.
+            Audible alarms, peaceful tones, and advance reminders for all 5 daily prayers and tasks.
           </Text>
 
-          <View style={styles.alarmStatusBanner}>
-            <MaterialCommunityIcons name="bell-ring" size={20} color={colors.primary} />
+          <TouchableOpacity
+            style={styles.diagnosticBtn}
+            onPress={() => router.push('/alarms/settings' as any)}
+          >
+            <MaterialCommunityIcons name="bell-ring" size={22} color={colors.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.alarmStatusTitle}>Core Prayer Alarms Active</Text>
-              <Text style={styles.alarmStatusDesc}>
-                Fajr, Dhuhr, Asr, Maghrib, Isha & Tahajjud have active alarms with sound and vibration enabled.
+              <Text style={styles.diagnosticTitle}>Prayer Alarms & Peaceful Tones</Text>
+              <Text style={styles.diagnosticSub}>
+                Customize alarms, choose peaceful tones & preview sounds
               </Text>
             </View>
-          </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.testAlarmBtn}
@@ -286,7 +294,7 @@ export default function SettingsScreen() {
           >
             <MaterialCommunityIcons name="alarm-check" size={20} color={colors.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.diagnosticTitle}>Full Diagnostics & Permissions</Text>
+              <Text style={styles.diagnosticTitle}>Technical Diagnostics & Permissions</Text>
               <Text style={styles.diagnosticSub}>
                 Inspect exact alarms, battery optimization & wake-lock
               </Text>

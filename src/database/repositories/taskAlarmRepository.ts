@@ -8,6 +8,7 @@ interface AlarmRow {
   alarm_time: string | null;
   reminder_minutes: number;
   sound_enabled: number;
+  sound_tone: string | null;
   vibration_enabled: number;
   snooze_minutes: number;
   repeat_rule: string;
@@ -23,6 +24,7 @@ function mapRowToAlarm(row: AlarmRow): TaskAlarm {
     alarmTime: row.alarm_time ?? undefined,
     reminderMinutes: row.reminder_minutes,
     soundEnabled: row.sound_enabled === 1,
+    soundTone: row.sound_tone || 'peaceful_adhan',
     vibrationEnabled: row.vibration_enabled === 1,
     snoozeMinutes: row.snooze_minutes,
     repeatRule: row.repeat_rule as RepeatRule,
@@ -58,7 +60,7 @@ export const taskAlarmRepository = {
       await db.runAsync(
         `UPDATE task_alarms SET
           is_enabled = ?, alarm_time = ?, reminder_minutes = ?,
-          sound_enabled = ?, vibration_enabled = ?, snooze_minutes = ?,
+          sound_enabled = ?, sound_tone = ?, vibration_enabled = ?, snooze_minutes = ?,
           repeat_rule = ?, updated_at = ?
         WHERE task_id = ?`,
         [
@@ -66,6 +68,7 @@ export const taskAlarmRepository = {
           alarm.alarmTime ?? null,
           alarm.reminderMinutes,
           alarm.soundEnabled ? 1 : 0,
+          alarm.soundTone || 'peaceful_adhan',
           alarm.vibrationEnabled ? 1 : 0,
           alarm.snoozeMinutes,
           alarm.repeatRule,
@@ -81,15 +84,16 @@ export const taskAlarmRepository = {
     } else {
       const newAlarm: TaskAlarm = {
         ...alarm,
+        soundTone: alarm.soundTone || 'peaceful_adhan',
         createdAt: now,
         updatedAt: now,
       };
       await db.runAsync(
         `INSERT INTO task_alarms (
           id, task_id, is_enabled, alarm_time, reminder_minutes,
-          sound_enabled, vibration_enabled, snooze_minutes, repeat_rule,
+          sound_enabled, sound_tone, vibration_enabled, snooze_minutes, repeat_rule,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newAlarm.id,
           newAlarm.taskId,
@@ -97,6 +101,7 @@ export const taskAlarmRepository = {
           newAlarm.alarmTime ?? null,
           newAlarm.reminderMinutes,
           newAlarm.soundEnabled ? 1 : 0,
+          newAlarm.soundTone || 'peaceful_adhan',
           newAlarm.vibrationEnabled ? 1 : 0,
           newAlarm.snoozeMinutes,
           newAlarm.repeatRule,
