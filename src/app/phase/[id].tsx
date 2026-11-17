@@ -38,9 +38,16 @@ export default function PhaseDetailsScreen() {
   const tasks: ScheduledTask[] = scheduledPhase?.tasks || [];
 
   const handleReorder = async (newOrderedTasks: ScheduledTask[]) => {
-    if (!id || !todayTimings) return;
-    const taskIds = newOrderedTasks.map((t) => t.id);
-    await reorderTasks(id, taskIds, todayTimings);
+    if (!id || !todayTimings || !Array.isArray(newOrderedTasks)) return;
+    const taskIds = newOrderedTasks
+      .filter((t): t is ScheduledTask => Boolean(t && t.id))
+      .map((t) => t.id);
+    if (taskIds.length === 0) return;
+    try {
+      await reorderTasks(id, taskIds, todayTimings);
+    } catch (e) {
+      console.warn('Failed to persist task reorder:', e);
+    }
   };
 
   const handleToggleStatus = async (taskId: string, status: TaskStatus) => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import DraggableFlatList, {
   RenderItemParams,
@@ -26,10 +26,31 @@ export const TaskReorderList: React.FC<TaskReorderListProps> = ({
   onMoveUp,
   onMoveDown,
 }) => {
+  // Keep local optimistic list to prevent DraggableFlatList desync and concurrent render crashes
+  const [localTasks, setLocalTasks] = useState<ScheduledTask[]>(() =>
+    Array.isArray(tasks) ? tasks.filter((t): t is ScheduledTask => Boolean(t && t.id)) : []
+  );
+
+  useEffect(() => {
+    if (Array.isArray(tasks)) {
+      setLocalTasks(tasks.filter((t): t is ScheduledTask => Boolean(t && t.id)));
+    }
+  }, [tasks]);
+
+  const handleDragEnd = ({ data }: { data: ScheduledTask[] }) => {
+    if (!Array.isArray(data)) return;
+    const cleanData = data.filter((item): item is ScheduledTask => Boolean(item && item.id));
+    setLocalTasks(cleanData);
+    if (cleanData.length > 0) {
+      onReorder(cleanData);
+    }
+  };
+
   const renderItem = ({ item, drag, isActive, getIndex }: RenderItemParams<ScheduledTask>) => {
+    if (!item || !item.id) return null;
     const index = getIndex() ?? 0;
     const canMoveUp = index > 0;
-    const canMoveDown = index < tasks.length - 1;
+    const canMoveDown = index < localTasks.length - 1;
 
     return (
       <ScaleDecorator>
@@ -65,9 +86,9 @@ export const TaskReorderList: React.FC<TaskReorderListProps> = ({
 
   return (
     <DraggableFlatList
-      data={tasks}
-      keyExtractor={(item) => item.id}
-      onDragEnd={({ data }) => onReorder(data)}
+      data={localTasks}
+      keyExtractor={(item, index) => item?.id ?? `task-${index}`}
+      onDragEnd={handleDragEnd}
       renderItem={renderItem}
       contentContainerStyle={styles.listContent}
       ListEmptyComponent={
