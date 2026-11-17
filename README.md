@@ -18,10 +18,10 @@ Unlike traditional productivity apps with rigid, static hours, SalahFlow organiz
 >
 > A pre-built, ready-to-install Android APK package is already included directly in this repository:
 >
-> 📦 **[`SalahFlow v1.apk.zip`](./SalahFlow%20v1.apk.zip)**
+> 📦 **[`SalahFlow v3.apk.zip`](./SalahFlow%20v3.apk.zip)**
 >
 > **Quick Steps to Install:**
-> 1. Download **`SalahFlow v1.apk.zip`** directly from the repository.
+> 1. Download **`SalahFlow v3.apk.zip`** directly from the repository.
 > 2. Extract / unzip the file on your computer or Android smartphone.
 > 3. Tap the extracted `.apk` file on your Android device to install and enjoy SalahFlow instantly!
 
@@ -179,7 +179,7 @@ npx expo start
 
 > [!TIP]
 > **Skip the build process entirely!**  
-> If you just want to run the app on your Android device, simply download and unzip the pre-built **[`SalahFlow v1.apk.zip`](./SalahFlow%20v1.apk.zip)** at the root of this repository.
+> If you just want to run the app on your Android device, simply download and unzip the pre-built **[`SalahFlow v3.apk.zip`](./SalahFlow%20v3.apk.zip)** at the root of this repository.
 
 You have three options if you want to build the Android APK from source:
 1. **Local APK Build via Gradle (Fastest, Completely Free, No Cloud Required)**
