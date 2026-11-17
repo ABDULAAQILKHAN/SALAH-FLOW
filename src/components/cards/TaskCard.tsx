@@ -148,6 +148,22 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               <Text style={styles.durationText}>{task.durationMinutes}m</Text>
             </View>
 
+            {/* Anchor / Flow Tag */}
+            {!task.isCore && task.schedulingType === 'prayer_relative' && task.anchorPrayer && (
+              <View style={styles.anchorTag}>
+                <Text style={styles.anchorTagText}>
+                  {task.anchorRelation === 'after' ? 'After ' : 'Before '}
+                  {task.anchorPrayer.toUpperCase()}
+                </Text>
+              </View>
+            )}
+
+            {!task.isCore && task.schedulingType === 'flexible' && (
+              <View style={styles.anchorTag}>
+                <Text style={styles.anchorTagText}>Flows Next</Text>
+              </View>
+            )}
+
             {task.alarm && task.alarm.isEnabled && (
               <View style={styles.alarmTag}>
                 <MaterialCommunityIcons
@@ -292,5 +308,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.gold,
     fontWeight: typography.fontWeight.bold,
+  },
+  anchorTag: {
+    backgroundColor: 'rgba(14, 165, 233, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.25)',
+  },
+  anchorTagText: {
+    fontSize: 9,
+    color: colors.secondary,
+    fontWeight: typography.fontWeight.semibold,
   },
 });

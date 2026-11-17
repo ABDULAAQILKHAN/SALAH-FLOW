@@ -183,4 +183,100 @@ describe('Dynamic Scheduling Engine & Conflict Resolver', () => {
     // Suggested start time should be right after Zuhr finishes (12:55 PM)
     expect(conflict.suggestedStartTime?.getTime()).toBe(zuhrEnd.getTime());
   });
+
+  test('Quran reading anchored after Tahajjud starts exactly when Tahajjud ends', () => {
+    const phase: Phase = {
+      id: 'phase-1',
+      name: 'Before Fajr',
+      type: 'fajr_early_morning',
+      sortOrder: 1,
+      isDefault: true,
+      isEnabled: true,
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    // Core Tahajjud: 05:43 AM to 06:03 AM (20m duration)
+    const tahajjudTask: Task = {
+      id: 'task-tahajjud',
+      phaseId: 'phase-1',
+      title: 'Tahajjud Prayer',
+      taskType: 'prayer',
+      prayerType: 'tahajjud',
+      isCore: true,
+      sortOrder: 10,
+      durationMinutes: 20,
+      schedulingType: 'fixed_time',
+      fixedTime: '05:43',
+      offsetMinutes: 0,
+      priority: 'core',
+      isEnabled: true,
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    // Quran reading: anchored after Tahajjud with 0m offset
+    const quranTask: Task = {
+      id: 'task-quran',
+      phaseId: 'phase-1',
+      title: 'Quran Recitation & Adhkar',
+      taskType: 'activity',
+      isCore: false,
+      sortOrder: 20,
+      durationMinutes: 30,
+      schedulingType: 'prayer_relative',
+      anchorPrayer: 'tahajjud',
+      anchorRelation: 'after',
+      offsetMinutes: 0,
+      priority: 'medium',
+      isEnabled: true,
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    // Fajr: at 06:10 AM
+    const fajrTask: Task = {
+      id: 'task-fajr',
+      phaseId: 'phase-1',
+      title: 'Fajr Prayer',
+      taskType: 'prayer',
+      prayerType: 'fajr',
+      isCore: true,
+      sortOrder: 30,
+      durationMinutes: 20,
+      schedulingType: 'fixed_time',
+      fixedTime: '06:10',
+      offsetMinutes: 0,
+      priority: 'core',
+      isEnabled: true,
+      createdAt: '',
+      updatedAt: '',
+    };
+
+    const schedule = scheduleEngine.buildDailySchedule(
+      day1,
+      [phase],
+      [tahajjudTask, quranTask, fajrTask],
+      times1
+    );
+
+    const phase1Tasks = schedule.phases[0].tasks;
+    expect(phase1Tasks).toHaveLength(3);
+
+    const scheduledTahajjud = phase1Tasks[0];
+    const scheduledQuran = phase1Tasks[1];
+    const scheduledFajr = phase1Tasks[2];
+
+    // Tahajjud: 5:43 AM - 6:03 AM
+    expect(scheduledTahajjud.displayStartTime).toBe('5:43 AM');
+    expect(scheduledTahajjud.displayEndTime).toBe('6:03 AM');
+
+    // Quran reading: Starts exactly at 6:03 AM (right when Tahajjud ends!)
+    expect(scheduledQuran.displayStartTime).toBe('6:03 AM');
+    expect(scheduledQuran.displayEndTime).toBe('6:33 AM');
+
+    // Fajr: 6:10 AM - 6:30 AM
+    expect(scheduledFajr.displayStartTime).toBe('6:10 AM');
+    expect(scheduledFajr.displayEndTime).toBe('6:30 AM');
+  });
 });

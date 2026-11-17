@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -31,10 +31,17 @@ import {
   TaskPriority,
 } from '../../types';
 import { generateUUID } from '../../utils/uuid';
+import {
+  formatTime12h,
+  parseTimeToDate,
+  addMinutesToDate,
+  subMinutesFromDate,
+} from '../../utils/dateTime';
+import { getPrayerAnchorTime } from '../../services/scheduling/scheduleEngine';
 
 export default function EditTaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { phases, loadSchedule, selectedDate, deleteTask } = useScheduleStore();
+  const { phases, dailySchedule, loadSchedule, selectedDate, deleteTask } = useScheduleStore();
   const { todayTimings } = usePrayerStore();
 
   const [task, setTask] = useState<Task | null>(null);
@@ -104,6 +111,111 @@ export default function EditTaskScreen() {
     };
     fetchData();
   }, [id]);
+
+  const computedPreview = useMemo(() => {
+    if (!todayTimings) return null;
+    const duration = parseInt(durationMinutes, 10) || 20;
+    const offset = parseInt(offsetMinutes, 10) || 0;
+    const now = new Date();
+
+    // Find phase tasks from dailySchedule
+    const phase = dailySchedule?.phases.find((p) => p.id === task?.phaseId);
+    const phaseTasks = phase?.tasks || [];
+    const currentIndex = phaseTasks.findIndex((t) => t.id === id);
+    const prevTask = currentIndex > 0 ? phaseTasks[currentIndex - 1] : undefined;
+    const nextTask =
+      currentIndex >= 0 && currentIndex < phaseTasks.length - 1
+        ? phaseTasks[currentIndex + 1]
+        : undefined;
+
+    let start: Date;
+    let explanation = '';
+
+    if (task?.isCore && task.taskType === 'prayer') {
+      if (salahTimingMode === 'fixed' && fixedTime.trim()) {
+        start = parseTimeToDate(fixedTime.trim(), now);
+        explanation = `Mosque / Jama'at fixed time: ${formatTime12h(start)}`;
+      } else {
+        const pName = task.prayerType || 'fajr';
+        const anchor = getPrayerAnchorTime(pName, todayTimings);
+        start = addMinutesToDate(anchor, offset);
+        explanation = `Astronomical entrance: ${formatTime12h(anchor)} + ${offset}m`;
+      }
+    } else if (schedulingType === 'fixed_time' && fixedTime.trim()) {
+      start = parseTimeToDate(fixedTime.trim(), now);
+      explanation = `Fixed clock time: ${formatTime12h(start)}`;
+    } else if (schedulingType === 'prayer_relative' && anchorPrayer) {
+      // Find if anchor prayer is a scheduled core task in today's schedule
+      const coreTask = dailySchedule?.phases
+        .flatMap((p) => p.tasks)
+        .find(
+          (t) =>
+            t.isCore &&
+            (t.prayerType === anchorPrayer ||
+              (t.taskType === 'prayer' && t.anchorPrayer === anchorPrayer))
+        );
+
+      const anchorStart = coreTask
+        ? coreTask.startTime
+        : getPrayerAnchorTime(anchorPrayer, todayTimings);
+      const anchorEnd = coreTask ? coreTask.endTime : addMinutesToDate(anchorStart, 20);
+
+      if (anchorRelation === 'before') {
+        const end = subMinutesFromDate(anchorStart, offset);
+        start = subMinutesFromDate(end, duration);
+        explanation = `Finishes ${
+          offset > 0 ? `${offset}m before` : 'right when'
+        } ${anchorPrayer.toUpperCase()} begins (${formatTime12h(anchorStart)})`;
+      } else {
+        start = addMinutesToDate(anchorEnd, offset);
+        explanation = `Starts ${
+          offset > 0 ? `${offset}m after` : 'right after'
+        } ${anchorPrayer.toUpperCase()} finishes (${formatTime12h(anchorEnd)})`;
+      }
+    } else {
+      // Flexible: after previous task in phase
+      if (prevTask) {
+        start = prevTask.endTime;
+        explanation = `Starts right after "${prevTask.title}" finishes (${formatTime12h(
+          prevTask.endTime
+        )})`;
+      } else if (phase) {
+        start = phase.startTime;
+        explanation = `Starts at beginning of phase (${formatTime12h(phase.startTime)})`;
+      } else {
+        start = todayTimings.dhuhr;
+        explanation = 'Flexible slot in daily phase';
+      }
+    }
+
+    const end = addMinutesToDate(start, duration);
+    const minutesToNext = nextTask
+      ? Math.round((nextTask.startTime.getTime() - start.getTime()) / 60000)
+      : null;
+
+    return {
+      startTime: start,
+      endTime: end,
+      displayStart: formatTime12h(start),
+      displayEnd: formatTime12h(end),
+      explanation,
+      prevTask,
+      nextTask,
+      minutesToNext,
+    };
+  }, [
+    todayTimings,
+    dailySchedule,
+    task,
+    id,
+    durationMinutes,
+    offsetMinutes,
+    schedulingType,
+    anchorPrayer,
+    anchorRelation,
+    fixedTime,
+    salahTimingMode,
+  ]);
 
   const handleSave = async () => {
     if (!task) return;
@@ -394,7 +506,7 @@ export default function EditTaskScreen() {
           <View style={styles.card}>
             <Text style={styles.sectionHeader}>Scheduling Configuration</Text>
             <Text style={styles.sectionDesc}>
-              Choose how this companion task aligns with daily prayer phases.
+              Choose how this task aligns with prayer times or your daily flow.
             </Text>
 
             <View style={styles.salahModeRow}>
@@ -414,91 +526,170 @@ export default function EditTaskScreen() {
                     ]}
                   >
                     {type === 'prayer_relative'
-                      ? 'Relative'
+                      ? 'Anchor to Prayer'
                       : type === 'fixed_time'
-                      ? 'Fixed'
-                      : 'Flexible'}
+                      ? 'Fixed Clock'
+                      : 'Follow Previous'}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
+            {schedulingType === 'flexible' && (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.hintText}>
+                  ● Sequential Flow: This task automatically begins right after the preceding task in this phase finishes. Reordering tasks in the phase adjusts this time automatically.
+                </Text>
+              </View>
+            )}
+
             {schedulingType === 'fixed_time' && (
               <View style={{ marginTop: spacing.md }}>
-                <Text style={styles.label}>Clock Time (e.g. 10:00 AM or 10:00)</Text>
+                <Text style={styles.label}>Clock Time (e.g. 06:03 AM or 06:03)</Text>
                 <TextInput
                   style={styles.input}
                   value={fixedTime}
                   onChangeText={setFixedTime}
-                  placeholder="10:00 AM"
+                  placeholder="06:03 AM"
                   placeholderTextColor={colors.textMuted}
                 />
+                <Text style={styles.hintText}>
+                  This task will be scheduled exactly at this clock time every day.
+                </Text>
               </View>
             )}
 
             {schedulingType === 'prayer_relative' && (
               <View style={{ marginTop: spacing.md }}>
                 <Text style={styles.label}>Anchor Prayer</Text>
-                <View style={styles.salahModeRow}>
-                  {(['fajr', 'zuhr', 'asr', 'maghrib', 'isha'] as PrayerName[]).map((p) => (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.prayerScrollRow}
+                >
+                  {(
+                    ['tahajjud', 'fajr', 'sunrise', 'zuhr', 'asr', 'maghrib', 'isha'] as PrayerName[]
+                  ).map((p) => (
                     <TouchableOpacity
                       key={p}
                       style={[
-                        styles.modeButton,
-                        anchorPrayer === p && styles.modeButtonSelected,
+                        styles.prayerChip,
+                        anchorPrayer === p && styles.prayerChipSelected,
                       ]}
                       onPress={() => setAnchorPrayer(p)}
                     >
                       <Text
                         style={[
-                          styles.modeButtonText,
-                          anchorPrayer === p && styles.modeButtonTextSelected,
+                          styles.prayerChipText,
+                          anchorPrayer === p && styles.prayerChipTextSelected,
                         ]}
                       >
                         {p.toUpperCase()}
                       </Text>
                     </TouchableOpacity>
                   ))}
+                </ScrollView>
+
+                <View style={{ marginTop: spacing.sm }}>
+                  <Text style={styles.label}>Position Relation</Text>
+                  <View style={styles.salahModeRow}>
+                    {(['after', 'before'] as AnchorRelation[]).map((rel) => (
+                      <TouchableOpacity
+                        key={rel}
+                        style={[
+                          styles.modeButton,
+                          anchorRelation === rel && styles.modeButtonSelected,
+                        ]}
+                        onPress={() => setAnchorRelation(rel)}
+                      >
+                        <Text
+                          style={[
+                            styles.modeButtonText,
+                            anchorRelation === rel && styles.modeButtonTextSelected,
+                          ]}
+                        >
+                          {rel === 'after' ? 'After Prayer Finishes' : 'Before Prayer Begins'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Relation</Text>
-                    <View style={styles.salahModeRow}>
-                      {(['before', 'after'] as AnchorRelation[]).map((rel) => (
-                        <TouchableOpacity
-                          key={rel}
-                          style={[
-                            styles.modeButton,
-                            anchorRelation === rel && styles.modeButtonSelected,
-                          ]}
-                          onPress={() => setAnchorRelation(rel)}
-                        >
-                          <Text
-                            style={[
-                              styles.modeButtonText,
-                              anchorRelation === rel && styles.modeButtonTextSelected,
-                            ]}
-                          >
-                            {rel.toUpperCase()}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
+                <View style={{ marginTop: spacing.sm }}>
+                  <Text style={styles.label}>Offset (Minutes)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={offsetMinutes}
+                    onChangeText={setOffsetMinutes}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={colors.textMuted}
+                  />
 
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Offset (Min)</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={offsetMinutes}
-                      onChangeText={setOffsetMinutes}
-                      keyboardType="number-pad"
-                    />
+                  <View style={styles.quickOffsetRow}>
+                    {[0, 5, 10, 15, 30].map((m) => (
+                      <TouchableOpacity
+                        key={m}
+                        style={[
+                          styles.quickOffsetChip,
+                          offsetMinutes === m.toString() && styles.quickOffsetChipSelected,
+                        ]}
+                        onPress={() => setOffsetMinutes(m.toString())}
+                      >
+                        <Text
+                          style={[
+                            styles.quickOffsetChipText,
+                            offsetMinutes === m.toString() && styles.quickOffsetChipTextSelected,
+                          ]}
+                        >
+                          {m === 0 ? '0m (Immediate)' : `${m}m`}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
               </View>
             )}
+          </View>
+        )}
+
+        {/* Live Calculated Schedule Preview Card */}
+        {computedPreview && (
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeaderRow}>
+              <MaterialCommunityIcons name="clock-check-outline" size={18} color={colors.primary} />
+              <Text style={styles.previewHeader}>Calculated Schedule Preview</Text>
+            </View>
+
+            <View style={styles.previewTimeRow}>
+              <Text style={styles.previewTime}>
+                {computedPreview.displayStart} – {computedPreview.displayEnd}
+              </Text>
+              <View style={styles.previewDurationBadge}>
+                <Text style={styles.previewDurationText}>{durationMinutes} min</Text>
+              </View>
+            </View>
+
+            <Text style={styles.previewExplanation}>{computedPreview.explanation}</Text>
+
+            {/* Quick action: Fit duration till next task */}
+            {computedPreview.nextTask &&
+              computedPreview.minutesToNext !== null &&
+              computedPreview.minutesToNext > 0 &&
+              computedPreview.minutesToNext !== parseInt(durationMinutes, 10) && (
+                <TouchableOpacity
+                  style={styles.fitNextButton}
+                  onPress={() => setDurationMinutes(computedPreview.minutesToNext!.toString())}
+                  activeOpacity={0.7}
+                >
+                  <MaterialCommunityIcons name="clock-fast" size={15} color={colors.primary} />
+                  <Text style={styles.fitNextButtonText}>
+                    Fit duration till next task: {computedPreview.nextTask.title} (
+                    {computedPreview.minutesToNext}m till {computedPreview.nextTask.displayStartTime}
+                    )
+                  </Text>
+                </TouchableOpacity>
+              )}
           </View>
         )}
 
@@ -809,5 +1000,122 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: spacing.md,
+  },
+  prayerScrollRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  prayerChip: {
+    backgroundColor: colors.surfaceHighlight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  prayerChipSelected: {
+    backgroundColor: colors.primaryMuted,
+    borderColor: colors.primary,
+  },
+  prayerChipText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeight.semibold,
+  },
+  prayerChipTextSelected: {
+    color: colors.primaryLight,
+    fontWeight: typography.fontWeight.bold,
+  },
+  quickOffsetRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  quickOffsetChip: {
+    backgroundColor: colors.surfaceHighlight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  quickOffsetChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  quickOffsetChipText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  quickOffsetChipTextSelected: {
+    color: colors.textOnPrimary,
+    fontWeight: typography.fontWeight.bold,
+  },
+  previewCard: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    marginBottom: spacing.md,
+  },
+  previewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  previewHeader: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
+    marginLeft: spacing.xs,
+  },
+  previewTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginVertical: spacing.xs,
+  },
+  previewTime: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  previewDurationBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  previewDurationText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
+  },
+  previewExplanation: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  fitNextButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  fitNextButtonText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.textPrimary,
+    marginLeft: spacing.xs,
+    flex: 1,
   },
 });

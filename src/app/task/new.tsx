@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { taskRepository } from '../../database/repositories/taskRepository';
 import { taskAlarmRepository } from '../../database/repositories/taskAlarmRepository';
 import { useScheduleStore } from '../../store/useScheduleStore';
 import { usePrayerStore } from '../../store/usePrayerStore';
+import { PEACEFUL_ALARM_TONES } from '../../constants/sounds';
 import { colors, typography, spacing, borderRadius } from '../../theme';
 import { generateUUID } from '../../utils/uuid';
 import {
@@ -27,10 +28,17 @@ import {
   TaskPriority,
   RepeatRule,
 } from '../../types';
+import {
+  formatTime12h,
+  parseTimeToDate,
+  addMinutesToDate,
+  subMinutesFromDate,
+} from '../../utils/dateTime';
+import { getPrayerAnchorTime } from '../../services/scheduling/scheduleEngine';
 
 export default function NewTaskScreen() {
   const { phaseId } = useLocalSearchParams<{ phaseId?: string }>();
-  const { phases, loadSchedule, selectedDate } = useScheduleStore();
+  const { phases, dailySchedule, loadSchedule, selectedDate } = useScheduleStore();
   const { todayTimings } = usePrayerStore();
 
   const [selectedPhaseId, setSelectedPhaseId] = useState<string>(
@@ -45,17 +53,97 @@ export default function NewTaskScreen() {
   const [schedulingType, setSchedulingType] = useState<SchedulingType>('prayer_relative');
   const [anchorPrayer, setAnchorPrayer] = useState<PrayerName>('fajr');
   const [anchorRelation, setAnchorRelation] = useState<AnchorRelation>('after');
-  const [offsetMinutes, setOffsetMinutes] = useState('15');
-  const [fixedTime, setFixedTime] = useState('09:00');
+  const [offsetMinutes, setOffsetMinutes] = useState('0');
+  const [fixedTime, setFixedTime] = useState('06:03');
 
   // Alarm settings
   const [alarmEnabled, setAlarmEnabled] = useState(true);
   const [reminderMinutes, setReminderMinutes] = useState(10);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundTone, setSoundTone] = useState<string>('peaceful_adhan');
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [repeatRule, setRepeatRule] = useState<RepeatRule>('daily');
 
   const [saving, setSaving] = useState(false);
+
+  const computedPreview = useMemo(() => {
+    if (!todayTimings) return null;
+    const duration = parseInt(durationMinutes, 10) || 20;
+    const offset = parseInt(offsetMinutes, 10) || 0;
+    const now = new Date();
+
+    const phase = dailySchedule?.phases.find((p) => p.id === selectedPhaseId);
+    const phaseTasks = phase?.tasks || [];
+    const prevTask = phaseTasks.length > 0 ? phaseTasks[phaseTasks.length - 1] : undefined;
+
+    let start: Date;
+    let explanation = '';
+
+    if (schedulingType === 'fixed_time' && fixedTime.trim()) {
+      start = parseTimeToDate(fixedTime.trim(), now);
+      explanation = `Fixed clock time: ${formatTime12h(start)}`;
+    } else if (schedulingType === 'prayer_relative' && anchorPrayer) {
+      const coreTask = dailySchedule?.phases
+        .flatMap((p) => p.tasks)
+        .find(
+          (t) =>
+            t.isCore &&
+            (t.prayerType === anchorPrayer ||
+              (t.taskType === 'prayer' && t.anchorPrayer === anchorPrayer))
+        );
+
+      const anchorStart = coreTask
+        ? coreTask.startTime
+        : getPrayerAnchorTime(anchorPrayer, todayTimings);
+      const anchorEnd = coreTask ? coreTask.endTime : addMinutesToDate(anchorStart, 20);
+
+      if (anchorRelation === 'before') {
+        const end = subMinutesFromDate(anchorStart, offset);
+        start = subMinutesFromDate(end, duration);
+        explanation = `Finishes ${
+          offset > 0 ? `${offset}m before` : 'right when'
+        } ${anchorPrayer.toUpperCase()} begins (${formatTime12h(anchorStart)})`;
+      } else {
+        start = addMinutesToDate(anchorEnd, offset);
+        explanation = `Starts ${
+          offset > 0 ? `${offset}m after` : 'right after'
+        } ${anchorPrayer.toUpperCase()} finishes (${formatTime12h(anchorEnd)})`;
+      }
+    } else {
+      if (prevTask) {
+        start = prevTask.endTime;
+        explanation = `Starts right after "${prevTask.title}" finishes (${formatTime12h(
+          prevTask.endTime
+        )})`;
+      } else if (phase) {
+        start = phase.startTime;
+        explanation = `Starts at beginning of phase (${formatTime12h(phase.startTime)})`;
+      } else {
+        start = todayTimings.dhuhr;
+        explanation = 'Flexible slot in phase';
+      }
+    }
+
+    const end = addMinutesToDate(start, duration);
+    return {
+      startTime: start,
+      endTime: end,
+      displayStart: formatTime12h(start),
+      displayEnd: formatTime12h(end),
+      explanation,
+      prevTask,
+    };
+  }, [
+    todayTimings,
+    dailySchedule,
+    selectedPhaseId,
+    durationMinutes,
+    offsetMinutes,
+    schedulingType,
+    anchorPrayer,
+    anchorRelation,
+    fixedTime,
+  ]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -107,6 +195,7 @@ export default function NewTaskScreen() {
           isEnabled: true,
           reminderMinutes,
           soundEnabled,
+          soundTone,
           vibrationEnabled,
           snoozeMinutes: 5,
           repeatRule,
@@ -299,23 +388,6 @@ export default function NewTaskScreen() {
               <Text style={styles.label}>Position Relation</Text>
               <View style={styles.relationRow}>
                 <TouchableOpacity
-                  onPress={() => setAnchorRelation('before')}
-                  style={[
-                    styles.relationButton,
-                    anchorRelation === 'before' && styles.relationButtonSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.relationText,
-                      anchorRelation === 'before' && styles.relationTextSelected,
-                    ]}
-                  >
-                    Before {anchorPrayer.toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
                   onPress={() => setAnchorRelation('after')}
                   style={[
                     styles.relationButton,
@@ -328,7 +400,24 @@ export default function NewTaskScreen() {
                       anchorRelation === 'after' && styles.relationTextSelected,
                     ]}
                   >
-                    After {anchorPrayer.toUpperCase()}
+                    After {anchorPrayer.toUpperCase()} Finishes
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setAnchorRelation('before')}
+                  style={[
+                    styles.relationButton,
+                    anchorRelation === 'before' && styles.relationButtonSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.relationText,
+                      anchorRelation === 'before' && styles.relationTextSelected,
+                    ]}
+                  >
+                    Before {anchorPrayer.toUpperCase()} Begins
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -336,12 +425,34 @@ export default function NewTaskScreen() {
               <Text style={styles.label}>Offset (Minutes)</Text>
               <TextInput
                 style={styles.input}
-                placeholder="15"
+                placeholder="0"
                 placeholderTextColor={colors.textDisabled}
                 keyboardType="number-pad"
                 value={offsetMinutes}
                 onChangeText={setOffsetMinutes}
               />
+
+              <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                {[0, 5, 10, 15, 30].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.quickOffsetChip,
+                      offsetMinutes === m.toString() && styles.quickOffsetChipSelected,
+                    ]}
+                    onPress={() => setOffsetMinutes(m.toString())}
+                  >
+                    <Text
+                      style={[
+                        styles.quickOffsetChipText,
+                        offsetMinutes === m.toString() && styles.quickOffsetChipTextSelected,
+                      ]}
+                    >
+                      {m === 0 ? '0m (Immediate)' : `${m}m`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
 
@@ -350,10 +461,10 @@ export default function NewTaskScreen() {
               <Text style={styles.helperText}>
                 Fixed tasks (e.g. office, school, meetings) remain strictly at their clock time.
               </Text>
-              <Text style={styles.label}>Start Time (24h format HH:mm)</Text>
+              <Text style={styles.label}>Start Time (e.g. 06:03 AM or 06:03)</Text>
               <TextInput
                 style={styles.input}
-                placeholder="09:30"
+                placeholder="06:03 AM"
                 placeholderTextColor={colors.textDisabled}
                 value={fixedTime}
                 onChangeText={setFixedTime}
@@ -364,11 +475,32 @@ export default function NewTaskScreen() {
           {schedulingType === 'flexible' && (
             <View style={styles.relativeConfig}>
               <Text style={styles.helperText}>
-                Flexible tasks are automatically slotted into open time windows within the phase.
+                ● Sequential Flow: This task automatically begins right after the preceding task in this phase finishes.
               </Text>
             </View>
           )}
         </View>
+
+        {/* Live Calculated Schedule Preview Card */}
+        {computedPreview && (
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeaderRow}>
+              <MaterialCommunityIcons name="clock-check-outline" size={18} color={colors.primary} />
+              <Text style={styles.previewHeader}>Calculated Schedule Preview</Text>
+            </View>
+
+            <View style={styles.previewTimeRow}>
+              <Text style={styles.previewTime}>
+                {computedPreview.displayStart} – {computedPreview.displayEnd}
+              </Text>
+              <View style={styles.previewDurationBadge}>
+                <Text style={styles.previewDurationText}>{durationMinutes} min</Text>
+              </View>
+            </View>
+
+            <Text style={styles.previewExplanation}>{computedPreview.explanation}</Text>
+          </View>
+        )}
 
         {/* Alarm & Reminder Settings */}
         <View style={styles.card}>
@@ -411,6 +543,31 @@ export default function NewTaskScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {/* Tone selector */}
+              <Text style={[styles.label, { marginTop: spacing.md }]}>Peaceful Tone</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                {PEACEFUL_ALARM_TONES.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[
+                      styles.reminderChip,
+                      soundTone === t.id && styles.reminderChipSelected,
+                      { marginRight: spacing.xs },
+                    ]}
+                    onPress={() => setSoundTone(t.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.reminderChipText,
+                        soundTone === t.id && styles.reminderChipTextSelected,
+                      ]}
+                    >
+                      {t.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
               <View style={[styles.toggleRow, { marginTop: spacing.md }]}>
                 <Text style={styles.optionLabel}>Sound Notification</Text>
@@ -673,5 +830,72 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: spacing.md,
+  },
+  quickOffsetChip: {
+    backgroundColor: colors.surfaceHighlight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  quickOffsetChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  quickOffsetChipText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  quickOffsetChipTextSelected: {
+    color: colors.textOnPrimary,
+    fontWeight: typography.fontWeight.bold,
+  },
+  previewCard: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    marginBottom: spacing.md,
+  },
+  previewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  previewHeader: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
+    marginLeft: spacing.xs,
+  },
+  previewTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginVertical: spacing.xs,
+  },
+  previewTime: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  previewDurationBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  previewDurationText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary,
+  },
+  previewExplanation: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 18,
   },
 });

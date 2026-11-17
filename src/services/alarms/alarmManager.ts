@@ -54,14 +54,18 @@ export const alarmManager = {
     if (task.startTime.getTime() > Date.now()) {
       const isPrayer = task.isCore && task.taskType === 'prayer';
       const tone = alarm.soundTone || 'peaceful_adhan';
-      const channel = isPrayer ? getChannelForTone(tone) : NOTIFICATION_CHANNELS.ALARMS;
-      const soundName = isPrayer ? getSoundFilename(tone) : 'default';
+      const channel = alarm.soundEnabled
+        ? getChannelForTone(tone)
+        : NOTIFICATION_CHANNELS.ALARMS;
+      const soundName = alarm.soundEnabled ? getSoundFilename(tone) : undefined;
 
       const title = isPrayer
         ? `Salah: ${task.title}`
         : `${task.title}`;
 
-      const body = task.description || `Scheduled for ${task.displayStartTime}`;
+      const body = task.description
+        ? `${task.description} (${task.displayStartTime} – ${task.displayEndTime})`
+        : `Scheduled for ${task.displayStartTime} – ${task.displayEndTime}`;
 
       await notificationService.scheduleNotification({
         identifier: this.getAlarmId(task.id),

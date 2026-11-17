@@ -45,6 +45,74 @@ export function getPrayerAnchorTime(
   }
 }
 
+export interface CorePrayerSchedule {
+  prayerName: PrayerName;
+  startTime: Date;
+  endTime: Date;
+  task?: Task;
+}
+
+export function buildCorePrayerMap(
+  tasks: Task[],
+  times: CalculatedTimes,
+  date: Date
+): Map<PrayerName, CorePrayerSchedule> {
+  const map = new Map<PrayerName, CorePrayerSchedule>();
+
+  // 1. Identify core tasks that represent prayers
+  for (const t of tasks) {
+    if (!t.isEnabled) continue;
+    const pName =
+      t.prayerType || (t.isCore && t.taskType === 'prayer' ? t.anchorPrayer : undefined);
+    if (!pName) continue;
+
+    let start: Date;
+    let end: Date;
+
+    if (t.schedulingType === 'fixed_time' && t.fixedTime) {
+      start = parseTimeToDate(t.fixedTime, date);
+      end = addMinutesToDate(start, t.durationMinutes);
+    } else if (t.schedulingType === 'prayer_relative' && t.anchorPrayer) {
+      const anchorTime = getPrayerAnchorTime(t.anchorPrayer, times);
+      if (t.anchorRelation === 'before') {
+        end = subMinutesFromDate(anchorTime, t.offsetMinutes);
+        start = subMinutesFromDate(end, t.durationMinutes);
+      } else {
+        start = addMinutesToDate(anchorTime, t.offsetMinutes);
+        end = addMinutesToDate(start, t.durationMinutes);
+      }
+    } else {
+      start = getPrayerAnchorTime(pName, times);
+      end = addMinutesToDate(start, t.durationMinutes);
+    }
+
+    map.set(pName, { prayerName: pName, startTime: start, endTime: end, task: t });
+  }
+
+  // 2. Fallbacks for standard prayers if not represented by a task
+  const standardPrayers: PrayerName[] = [
+    'tahajjud',
+    'fajr',
+    'sunrise',
+    'zuhr',
+    'asr',
+    'maghrib',
+    'isha',
+  ];
+  for (const p of standardPrayers) {
+    if (!map.has(p)) {
+      const s = getPrayerAnchorTime(p, times);
+      map.set(p, {
+        prayerName: p,
+        startTime: s,
+        endTime: addMinutesToDate(s, 20),
+      });
+    }
+  }
+
+  return map;
+}
+
 export const scheduleEngine = {
   computeScheduledTask(
     task: Task,
@@ -52,29 +120,69 @@ export const scheduleEngine = {
     times: CalculatedTimes,
     statusMap: Map<string, DailyTaskStatus>,
     alarmMap: Map<string, TaskAlarm>,
-    phaseStartTime?: Date
+    phaseStartTime?: Date,
+    corePrayerMap?: Map<PrayerName, CorePrayerSchedule>,
+    previousTaskEnd?: Date
   ): ScheduledTask {
     let start: Date;
     let end: Date;
 
-    if (task.schedulingType === 'fixed_time' && task.fixedTime) {
+    const prayerName = task.prayerType;
+
+    // A: Is this a core prayer with pre-computed schedule?
+    if (task.isCore && prayerName && corePrayerMap?.has(prayerName)) {
+      const core = corePrayerMap.get(prayerName)!;
+      start = core.startTime;
+      end = core.endTime;
+    } else if (task.schedulingType === 'fixed_time' && task.fixedTime) {
+      // B: Explicit fixed clock time
       start = parseTimeToDate(task.fixedTime, date);
       end = addMinutesToDate(start, task.durationMinutes);
     } else if (task.schedulingType === 'prayer_relative' && task.anchorPrayer) {
-      const anchorTime = getPrayerAnchorTime(task.anchorPrayer, times);
+      // C: Anchored relative to a prayer (e.g. Tahajjud, Fajr, Zuhr, etc.)
+      const anchor = corePrayerMap?.get(task.anchorPrayer);
 
-      if (task.anchorRelation === 'before') {
-        end = subMinutesFromDate(anchorTime, task.offsetMinutes);
-        start = subMinutesFromDate(end, task.durationMinutes);
+      if (anchor) {
+        if (task.anchorRelation === 'before') {
+          // Finishes offsetMinutes before prayer starts
+          end = subMinutesFromDate(anchor.startTime, task.offsetMinutes);
+          start = subMinutesFromDate(end, task.durationMinutes);
+        } else {
+          // 'after': Starts offsetMinutes after prayer finishes (or begins if anchor has no duration)
+          const baseTime =
+            anchor.endTime.getTime() > anchor.startTime.getTime()
+              ? anchor.endTime
+              : anchor.startTime;
+          start = addMinutesToDate(baseTime, task.offsetMinutes);
+          end = addMinutesToDate(start, task.durationMinutes);
+        }
       } else {
-        // after
-        start = addMinutesToDate(anchorTime, task.offsetMinutes);
-        end = addMinutesToDate(start, task.durationMinutes);
+        // Fallback to astronomical calculation
+        const anchorTime = getPrayerAnchorTime(task.anchorPrayer, times);
+        if (task.anchorRelation === 'before') {
+          end = subMinutesFromDate(anchorTime, task.offsetMinutes);
+          start = subMinutesFromDate(end, task.durationMinutes);
+        } else {
+          start = addMinutesToDate(anchorTime, task.offsetMinutes);
+          end = addMinutesToDate(start, task.durationMinutes);
+        }
       }
     } else {
-      // Flexible task or fallback: anchor relative to phase start or previous task
-      const base = phaseStartTime || times.dhuhr;
-      start = addMinutesToDate(base, (task.sortOrder % 100) * 5);
+      // D: Flexible / Sequential: starts right after previous task in phase, or phase start
+      const base = previousTaskEnd || phaseStartTime || times.dhuhr;
+      start = base;
+      end = addMinutesToDate(start, task.durationMinutes);
+    }
+
+    // Chronological safeguard for sequential phase tasks:
+    // If a task is not explicitly fixed-time, and it's positioned after a previous task in the phase,
+    // its start time should never jump backward before the previous task.
+    if (
+      task.schedulingType !== 'fixed_time' &&
+      previousTaskEnd &&
+      isBefore(start, previousTaskEnd)
+    ) {
+      start = previousTaskEnd;
       end = addMinutesToDate(start, task.durationMinutes);
     }
 
@@ -114,6 +222,7 @@ export const scheduleEngine = {
     }
 
     const boundaries = phaseEngine.calculateBoundariesForPhases(phases, times);
+    const corePrayerMap = buildCorePrayerMap(tasks, times, date);
 
     // Group tasks by phaseId
     const tasksByPhase = new Map<string, Task[]>();
@@ -143,6 +252,7 @@ export const scheduleEngine = {
       );
 
       const scheduledTasksInPhase: ScheduledTask[] = [];
+      let previousTaskEnd: Date | undefined = undefined;
 
       for (const task of phaseTasks) {
         const scheduled = this.computeScheduledTask(
@@ -151,10 +261,13 @@ export const scheduleEngine = {
           times,
           statusMap,
           alarmMap,
-          boundary.startTime
+          boundary.startTime,
+          corePrayerMap,
+          previousTaskEnd
         );
         scheduledTasksInPhase.push(scheduled);
         allScheduledTasks.push(scheduled);
+        previousTaskEnd = scheduled.endTime;
       }
 
       // Sort tasks by sortOrder first, or chronological start time
