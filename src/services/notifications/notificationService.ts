@@ -182,6 +182,30 @@ export const notificationService = {
     });
   },
 
+  async sendImmediateNotification(params: {
+    title: string;
+    body: string;
+    channelId?: string;
+    data?: Record<string, any>;
+  }): Promise<string> {
+    try {
+      return await Notifications.scheduleNotificationAsync({
+        content: {
+          title: params.title,
+          body: params.body,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          data: params.data || {},
+          ...(Platform.OS === 'android' ? { channelId: params.channelId || NOTIFICATION_CHANNELS.REMINDERS } : {}),
+        },
+        trigger: null,
+      });
+    } catch (e) {
+      console.warn('Failed to send immediate notification:', e);
+      return '';
+    }
+  },
+
   async cancelNotification(identifier: string): Promise<void> {
     try {
       await Notifications.cancelScheduledNotificationAsync(identifier);

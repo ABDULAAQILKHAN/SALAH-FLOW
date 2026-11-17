@@ -18,6 +18,7 @@ import { useScheduleStore } from '../../store/useScheduleStore';
 import { locationService } from '../../services/location/locationService';
 import { alarmPermissions } from '../../services/alarms/alarmPermissions';
 import { alarmManager } from '../../services/alarms/alarmManager';
+import { notificationService } from '../../services/notifications/notificationService';
 import { backupService } from '../../services/backup/backupService';
 import { resetDatabase } from '../../database';
 import { phaseEngine } from '../../services/scheduling/phaseEngine';
@@ -29,13 +30,15 @@ import {
 } from '../../constants/prayers';
 
 export default function SettingsScreen() {
-  const { location, prayerConfig, updateLocation, updatePrayerConfig, refreshTimings } = usePrayerStore();
+  const { location, prayerConfig, updateLocation, updatePrayerConfig, refreshTimings, loadSettings } = usePrayerStore();
   const { loadSchedule, selectedDate } = useScheduleStore();
 
   const [detectingGps, setDetectingGps] = useState(false);
   const [cityPickerVisible, setCityPickerVisible] = useState(false);
   const [methodPickerVisible, setMethodPickerVisible] = useState(false);
   const [testingAlarm, setTestingAlarm] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const handleQuickTestAlarm = async () => {
     setTestingAlarm(true);
@@ -87,14 +90,107 @@ export default function SettingsScreen() {
   };
 
   const handleExportBackup = async () => {
+    setExporting(true);
     try {
-      const json = await backupService.exportData();
+      // 1. Notify that data export / download has started
+      await notificationService.sendImmediateNotification({
+        title: '📥 Downloading SalahFlow Data...',
+        body: `Exporting routines, manual prayer timings, and alarms for ${location.cityName}...`,
+      });
+
+      // 2. Perform export to Downloads / SalahFlow Data folder
+      const result = await backupService.exportToDownloadsFolder();
+
+      // 3. Notify that download is complete
+      await notificationService.sendImmediateNotification({
+        title: '✅ SalahFlow Data Downloaded',
+        body: `Saved ${result.fileName} in ${result.folderName}.`,
+      });
+
+      // 4. Show success alert with detailed location
       Alert.alert(
-        'Backup Generated (JSON)',
-        `Data exported successfully (${json.length} bytes). You can back up or restore this offline anytime.`
+        'Backup Exported Successfully',
+        `📁 Folder: ${result.folderName}\n📄 File: ${result.fileName}\n📍 City: ${result.city}\n📋 Tasks: ${result.taskCount} tasks across ${result.phaseCount} phases\n\nYour file is located in the "SalahFlow Data" folder inside your device's Downloads. You can share or restore it anytime.`
       );
     } catch (e: any) {
       Alert.alert('Export Failed', e?.message || 'Could not export data.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    try {
+      const picked = await backupService.pickBackupFile();
+      if (!picked) {
+        return;
+      }
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(picked.jsonString);
+      } catch {
+        Alert.alert('Invalid File', 'The selected file does not contain valid JSON data.');
+        return;
+      }
+
+      if (!parsed.phases || !parsed.tasks) {
+        Alert.alert(
+          'Incompatible Backup',
+          'This JSON file does not appear to be a valid SalahFlow backup (missing phases or tasks).'
+        );
+        return;
+      }
+
+      const cityName = parsed.city || parsed.location?.cityName || 'Unknown';
+      const phaseCount = parsed.phases.length;
+      const taskCount = parsed.tasks.length;
+      const exportedDateStr = parsed.exportedAt
+        ? new Date(parsed.exportedAt).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : 'Unknown Date';
+
+      Alert.alert(
+        'Restore Backup?',
+        `File: ${picked.fileName}\nCity: ${cityName}\nExported: ${exportedDateStr}\nPhases: ${phaseCount} | Tasks: ${taskCount}\n\n⚠️ Restoring will replace your current schedule with this backup and switch the active city to ${cityName}. Do you want to proceed?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restore Now',
+            style: 'destructive',
+            onPress: async () => {
+              setRestoring(true);
+              try {
+                const res = await backupService.importData(picked.jsonString);
+                await loadSettings();
+                const timings = await refreshTimings();
+                await loadSchedule(selectedDate, timings);
+
+                await notificationService.sendImmediateNotification({
+                  title: '🔄 SalahFlow Data Restored',
+                  body: `Routine restored for ${res.city} with ${res.taskCount} tasks.`,
+                });
+
+                Alert.alert(
+                  'Restore Complete',
+                  `Successfully restored ${res.taskCount} tasks across ${res.phaseCount} phases for ${res.city}. Your prayer timings and alarms have been updated.`
+                );
+              } catch (importErr: any) {
+                Alert.alert('Restore Failed', importErr?.message || 'Could not import backup.');
+              } finally {
+                setRestoring(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert('Restore Error', e?.message || 'Failed to select backup file.');
     }
   };
 
@@ -305,15 +401,56 @@ export default function SettingsScreen() {
 
         {/* Section: Offline Backup & Restore */}
         <View style={styles.card}>
-          <Text style={styles.sectionHeader}>Offline Backup & Storage</Text>
+          <Text style={styles.sectionHeader}>Offline Backup & Restore</Text>
           <Text style={styles.itemSub}>
-            SalahFlow stores all routines and timings in local SQLite. You can export a JSON snapshot.
+            SalahFlow stores all routines, manual Salah timings, tasks, and alarms locally. Back up your routine to your Downloads folder or restore it anytime.
           </Text>
 
+          {/* Current City Snapshot Chip */}
+          <View style={styles.backupCityBadge}>
+            <MaterialCommunityIcons name="map-marker-radius" size={16} color={colors.primary} />
+            <Text style={styles.backupCityText}>
+              Active City: <Text style={{ fontWeight: typography.fontWeight.bold, color: colors.primaryLight }}>{location.cityName}</Text> ({location.latitude.toFixed(2)}°, {location.longitude.toFixed(2)}°)
+            </Text>
+          </View>
+
+          {/* Download Path Info */}
+          <View style={styles.backupPathBox}>
+            <MaterialCommunityIcons name="folder-download-outline" size={16} color={colors.textMuted} />
+            <Text style={styles.backupPathText}>
+              Target Folder: <Text style={styles.backupPathHighlight}>Downloads / SalahFlow Data /</Text>
+            </Text>
+          </View>
+
           <View style={styles.backupActions}>
-            <TouchableOpacity style={styles.backupBtn} onPress={handleExportBackup}>
-              <MaterialCommunityIcons name="export-variant" size={18} color={colors.primary} />
-              <Text style={styles.backupBtnText}>Export JSON Backup</Text>
+            <TouchableOpacity
+              style={[styles.backupBtn, exporting && styles.btnDisabled]}
+              onPress={handleExportBackup}
+              disabled={exporting}
+            >
+              <MaterialCommunityIcons
+                name={exporting ? 'progress-download' : 'download-circle-outline'}
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.backupBtnText}>
+                {exporting ? 'Exporting & Downloading...' : 'Export to Downloads Folder'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.restoreBtn, restoring && styles.btnDisabled]}
+              onPress={handleRestoreBackup}
+              disabled={restoring}
+            >
+              <MaterialCommunityIcons
+                name={restoring ? 'progress-clock' : 'file-restore-outline'}
+                size={20}
+                color={colors.secondary}
+              />
+              <Text style={styles.restoreBtnText}>
+                {restoring ? 'Restoring Data...' : 'Restore from Backup (Import JSON)'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -542,8 +679,43 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  backupCityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryMuted,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.sm + 2,
+    marginTop: spacing.sm,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  backupCityText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+  },
+  backupPathBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceHighlight,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.sm + 2,
+    marginTop: spacing.xs,
+    gap: 6,
+  },
+  backupPathText: {
+    fontSize: typography.fontSize.xs - 1,
+    color: colors.textMuted,
+  },
+  backupPathHighlight: {
+    color: colors.textPrimary,
+    fontWeight: typography.fontWeight.semibold,
+  },
   backupActions: {
     marginTop: spacing.md,
+    gap: spacing.sm,
   },
   backupBtn: {
     flexDirection: 'row',
@@ -553,11 +725,30 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: colors.surfaceBorder,
+    borderColor: colors.primary,
     gap: spacing.sm,
   },
+  restoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceHighlight,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+    gap: spacing.sm,
+  },
+  btnDisabled: {
+    opacity: 0.6,
+  },
   backupBtnText: {
-    color: colors.textPrimary,
+    color: colors.primaryLight,
+    fontWeight: typography.fontWeight.semibold,
+    fontSize: typography.fontSize.sm,
+  },
+  restoreBtnText: {
+    color: colors.secondary,
     fontWeight: typography.fontWeight.semibold,
     fontSize: typography.fontSize.sm,
   },
